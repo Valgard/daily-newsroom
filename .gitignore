@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# uv
+.uv/
+
+# Ruff / linters
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Tests / coverage
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# macOS
+.DS_Store
+
+# Project-local state
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs (should live in ~/Library/Logs/newsroom/ anyway)
+*.log
+
+# Worktrees
+.worktrees/
