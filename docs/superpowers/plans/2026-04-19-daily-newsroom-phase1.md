@@ -1674,7 +1674,7 @@ git commit -m "feat(fetcher): RSS/Atom/JSON parsers with uniform ParsedItem"
 - Modify: `src/newsroom/fetcher.py` (add orchestration)
 - Modify: `tests/test_fetcher.py`
 
-- [ ] **Step 1: Write orchestration tests**
+- [x] **Step 1: Write orchestration tests**
 
 Append to `tests/test_fetcher.py`:
 
@@ -1732,7 +1732,7 @@ async def test_fetch_due_sources_handles_network_error(state, httpx_mock: HTTPXM
     assert row["consecutive_errors"] == 1
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_fetcher.py -v
@@ -1740,7 +1740,7 @@ uv run pytest tests/test_fetcher.py -v
 
 Expected: new tests fail (`fetch_due_sources` not defined).
 
-- [ ] **Step 3: Implement orchestration in `src/newsroom/fetcher.py`**
+- [x] **Step 3: Implement orchestration in `src/newsroom/fetcher.py`**
 
 Append:
 
@@ -1829,7 +1829,7 @@ async def _fetch_and_ingest_one(src_row: Any, state: "State") -> FetchResult:  #
     return FetchResult(source_name=name, status=200, items_inserted=inserted)
 ```
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 ```bash
 uv run pytest -v
@@ -1837,7 +1837,7 @@ uv run pytest -v
 
 Expected: everything passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/newsroom/fetcher.py tests/test_fetcher.py
