@@ -13,12 +13,7 @@ async def filter_pending_arxiv_items(state, agent: AgentClient | None = None) ->
     """Filter all 'new' items from arxiv sources. Returns count processed."""
     if agent is None:
         agent = AgentClient()
-    conn = state.connection()
-    arxiv_items = conn.execute(
-        "SELECT items.* FROM items "
-        "JOIN sources ON items.source_id = sources.id "
-        "WHERE items.status = 'new' AND sources.subcategory = 'arxiv'"
-    ).fetchall()
+    arxiv_items = state.list_pending_arxiv_items()
 
     processed = 0
     for item in arxiv_items:

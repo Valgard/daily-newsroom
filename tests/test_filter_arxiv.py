@@ -88,3 +88,12 @@ async def test_filter_only_processes_arxiv_subcategory(state_with_arxiv_item: St
     await filter_pending_arxiv_items(state_with_arxiv_item, agent=mock_client)
     # Only 1 call — the arxiv item
     assert mock_client.ask.call_count == 1
+
+
+async def test_filter_logs_and_continues_on_agent_error(state_with_arxiv_item: State) -> None:
+    mock_client = AsyncMock()
+    mock_client.ask.side_effect = RuntimeError("API down")
+    count = await filter_pending_arxiv_items(state_with_arxiv_item, agent=mock_client)
+    assert count == 0
+    row = state_with_arxiv_item.connection().execute("SELECT status FROM items").fetchone()
+    assert row["status"] == "new"  # item left for retry

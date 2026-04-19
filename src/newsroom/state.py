@@ -212,6 +212,20 @@ class State:
 
     # ── Items ──────────────────────────────────────────────────────────
 
+    def list_pending_arxiv_items(self) -> list[sqlite3.Row]:
+        """Return 'new' items whose source has subcategory='arxiv'.
+
+        Used by the arxiv filter (pre-scoring) to decide relevance.
+        """
+        conn = self.connection()
+        return list(
+            conn.execute(
+                "SELECT items.* FROM items "
+                "JOIN sources ON items.source_id = sources.id "
+                "WHERE items.status = 'new' AND sources.subcategory = 'arxiv'"
+            ).fetchall()
+        )
+
     def insert_item(
         self,
         *,
