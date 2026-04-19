@@ -198,7 +198,7 @@ git commit -m "chore: project scaffolding (uv, deps, package skeleton)"
 - Create: `tests/test_config.py`
 - Create: `tests/fixtures/sources.fixture.yaml`
 
-- [ ] **Step 1: Write test fixture**
+- [x] **Step 1: Write test fixture**
 
 Create `tests/fixtures/sources.fixture.yaml`:
 
@@ -227,7 +227,7 @@ sources:
     enabled: false
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `tests/test_config.py`:
 
@@ -284,7 +284,7 @@ def test_load_sources_rejects_duplicate_names(tmp_path: Path) -> None:
         load_sources(dupe)
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 ```bash
 uv run pytest tests/test_config.py -v
@@ -292,7 +292,7 @@ uv run pytest tests/test_config.py -v
 
 Expected: `ModuleNotFoundError: No module named 'newsroom.config'`
 
-- [ ] **Step 4: Implement `src/newsroom/config.py`**
+- [x] **Step 4: Implement `src/newsroom/config.py`**
 
 ```python
 """Config loader: YAML → Pydantic-validated Source objects."""
@@ -362,13 +362,13 @@ def load_sources(path: Path) -> list[Source]:
     return parsed.sources
 ```
 
-- [ ] **Step 5: Add `pyyaml` dependency**
+- [x] **Step 5: Add `pyyaml` dependency**
 
 ```bash
 uv add pyyaml
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_config.py -v
@@ -376,14 +376,14 @@ uv run pytest tests/test_config.py -v
 
 Expected: all 5 tests PASS.
 
-- [ ] **Step 7: Run linter**
+- [x] **Step 7: Run linter**
 
 ```bash
 uv run ruff check src/newsroom/config.py tests/test_config.py
 uv run ruff format src/newsroom/config.py tests/test_config.py
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/newsroom/config.py tests/test_config.py tests/fixtures/sources.fixture.yaml pyproject.toml uv.lock
