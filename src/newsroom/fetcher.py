@@ -273,7 +273,12 @@ async def _fetch_and_ingest_one(src_row: Any, state: State) -> FetchResult:
 
     # 200 OK: parse + insert
     assert outcome.body is not None
-    parsed = parse_feed(outcome.body, feed_type=src_row["feed_type"])
+    feed_type = src_row["feed_type"]
+    if feed_type == "sitemap-scrape":
+        url_filter = src_row["url_filter"] or r".*"
+        parsed = await parse_sitemap_scrape(outcome.body, url_filter=url_filter, now=now)
+    else:
+        parsed = parse_feed(outcome.body, feed_type=feed_type)
     inserted = 0
     for item in parsed:
         if state.insert_item(

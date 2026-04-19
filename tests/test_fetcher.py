@@ -240,3 +240,42 @@ def test_parse_json_github_releases(fixtures_dir: Path) -> None:
     second = items[1]
     assert second.title == "v1.2.4"
     assert second.author is None
+
+
+async def test_fetch_due_sources_dispatches_sitemap_scrape(
+    state: State, httpx_mock: HTTPXMock, fixtures_dir: Path
+) -> None:
+    """End-to-end: a sitemap-scrape source goes through the new parser + inserts items."""
+    state.upsert_source(
+        Source(
+            name="anthropic-news",
+            category="ai",
+            subcategory="lab",
+            url="https://example.com/sitemap.xml",
+            feed_type="sitemap-scrape",
+            interval_seconds=3600,
+            enabled=True,
+            url_filter=r"^/news/",
+        )
+    )
+    # 1) sitemap response
+    httpx_mock.add_response(
+        url="https://example.com/sitemap.xml",
+        content=(fixtures_dir / "sitemap_varied.xml").read_bytes(),
+    )
+    # 2) per-URL OG responses (only /news/ paths — /about and /careers filtered out)
+    for slug in ("first-article", "second-article", "third-article"):
+        httpx_mock.add_response(
+            url=f"https://example.com/news/{slug}",
+            content=(
+                f'<html><head><meta property="og:title" content="T {slug}"></head></html>'
+            ).encode(),
+        )
+    results = await fetch_due_sources(state)
+    assert len(results) == 1
+    assert results[0].items_inserted == 3  # /about and /careers filtered out
+    # Items in DB
+    new_items = state.list_items_by_status("new", limit=10)
+    assert len(new_items) == 3
+    titles = {i["title"] for i in new_items}
+    assert titles == {"T first-article", "T second-article", "T third-article"}
