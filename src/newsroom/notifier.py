@@ -23,6 +23,9 @@ THRESHOLD_QUIET = 5
 THRESHOLD_DAYTIME = 4
 THRESHOLD_NEVER = 99
 
+# Spec §4.3: suppress duplicate pushes in the same category within this window.
+BUNDLING_WINDOW_MINUTES = 15
+
 
 def compute_threshold_for_hour(
     hour: int,
@@ -82,7 +85,13 @@ class Notifier:
         self._send = send_fn
 
     async def maybe_notify(self, item: Any, state: Any) -> None:
-        """Decide whether to notify; if yes, send and mark."""
+        """Decide whether to notify; if yes, send and mark.
+
+        Spec §4.3 bundling: if another item in the same category has already
+        been pushed within the last 15 minutes, suppress this push (the item
+        is still marked as notified so the scorer does not retry it, and it
+        still flows through to the digest).
+        """
         # Already notified?
         if item["notified_at"] is not None:
             return
@@ -92,6 +101,19 @@ class Notifier:
         subcategory = item["source_subcategory"]
 
         if not meets_threshold(item, hour=hour, subcategory=subcategory):
+            return
+
+        recent_pushes = state.count_recent_notifications_by_category(
+            item["category"], within_minutes=BUNDLING_WINDOW_MINUTES
+        )
+        if recent_pushes >= 1:
+            logger.info(
+                "suppressed push for item %s: category %r already notified within %dmin",
+                item["id"],
+                item["category"],
+                BUNDLING_WINDOW_MINUTES,
+            )
+            state.mark_item_notified(item_id=item["id"])
             return
 
         prefix = TITLE_PREFIX.get(item["category"], item["category"].capitalize())

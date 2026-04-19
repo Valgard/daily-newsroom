@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from newsroom.config import Source
@@ -331,11 +331,15 @@ class State:
         )
 
     def mark_item_notified(self, *, item_id: int) -> None:
-        """Stamp notification time. Status remains 'scored' — notified_at is the record."""
+        """Stamp notification time. Status remains 'scored' — notified_at is the record.
+
+        Uses Python's datetime (respects freezegun/test clocks) rather than
+        SQLite's datetime('now') so the bundling window is test-deterministic.
+        """
         conn = self.connection()
         conn.execute(
-            "UPDATE items SET notified_at = datetime('now') WHERE id = ?",
-            (item_id,),
+            "UPDATE items SET notified_at = ? WHERE id = ?",
+            (datetime.now(UTC).isoformat(), item_id),
         )
 
     def mark_item_digested(self, *, item_id: int, digest_label: str) -> None:
@@ -350,12 +354,18 @@ class State:
         category: str,
         within_minutes: int,
     ) -> int:
+        """Count items in `category` notified within the last `within_minutes`.
+
+        Cutoff is computed in Python (freezegun-aware); the stored notified_at
+        strings are ISO-8601 and comparable lexicographically.
+        """
+        cutoff_iso = (datetime.now(UTC) - timedelta(minutes=within_minutes)).isoformat()
         conn = self.connection()
         return conn.execute(
             "SELECT COUNT(*) FROM items "
             "WHERE category = ? AND notified_at IS NOT NULL "
-            "  AND notified_at >= datetime('now', ?)",
-            (category, f"-{within_minutes} minutes"),
+            "  AND notified_at >= ?",
+            (category, cutoff_iso),
         ).fetchone()[0]
 
     # ── Digests ────────────────────────────────────────────────────────

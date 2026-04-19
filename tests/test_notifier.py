@@ -102,3 +102,67 @@ async def test_notifier_marks_item_notified(state: State) -> None:
         await notifier.maybe_notify(row, state)
     updated = state.get_item_with_source(item_id)
     assert updated["notified_at"] is not None
+
+
+# ── bundling (spec §4.3) ──────────────────────────────────────────────
+
+
+def _insert_second_scored_item(state: State, importance: int, title: str) -> int:
+    """Add a second item to the existing 'a' source; assumes source already present."""
+    src_id = state.get_source_by_name("a")["id"]
+    state.insert_item(
+        source_id=src_id,
+        item_hash=f"h-{title}",
+        url=f"https://a.com/{title}",
+        title=title,
+        author=None,
+        published_at=None,
+        raw_summary="body",
+        category="ai",
+    )
+    new_item = [i for i in state.list_items_by_status("new", limit=10) if i["title"] == title][0]
+    state.mark_item_scored(item_id=new_item["id"], importance=importance, reason="r", model="haiku")
+    return new_item["id"]
+
+
+async def test_notifier_suppresses_second_push_within_15min(state: State) -> None:
+    """Second importance-5 item in same category within 15 min → no push, marked as notified."""
+    item1_id = _insert_scored_item(state, importance=5, title="First")
+    row1 = state.get_item_with_source(item1_id)
+    send_mock = AsyncMock()
+    notifier = Notifier(send_fn=send_mock)
+
+    # First push at 10:00 — succeeds
+    with freeze_time("2026-04-19 10:00:00"):
+        await notifier.maybe_notify(row1, state)
+    assert send_mock.await_count == 1
+
+    # Second item 5 min later — same category, should be suppressed
+    item2_id = _insert_second_scored_item(state, importance=5, title="Second")
+    row2 = state.get_item_with_source(item2_id)
+    with freeze_time("2026-04-19 10:05:00"):
+        await notifier.maybe_notify(row2, state)
+    assert send_mock.await_count == 1  # still only one push
+
+    # But the second item IS marked as notified so the scorer doesn't retry it
+    updated2 = state.get_item_with_source(item2_id)
+    assert updated2["notified_at"] is not None
+
+
+async def test_notifier_pushes_again_after_15min_window(state: State) -> None:
+    """After 15 min, the bundling window expires → a new push is allowed."""
+    item1_id = _insert_scored_item(state, importance=5, title="First")
+    row1 = state.get_item_with_source(item1_id)
+    send_mock = AsyncMock()
+    notifier = Notifier(send_fn=send_mock)
+
+    with freeze_time("2026-04-19 10:00:00"):
+        await notifier.maybe_notify(row1, state)
+    assert send_mock.await_count == 1
+
+    # 16 min later — outside bundling window, push allowed again
+    item2_id = _insert_second_scored_item(state, importance=5, title="Second")
+    row2 = state.get_item_with_source(item2_id)
+    with freeze_time("2026-04-19 10:16:00"):
+        await notifier.maybe_notify(row2, state)
+    assert send_mock.await_count == 2  # noqa: PLR2004
