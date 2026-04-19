@@ -1,8 +1,7 @@
 """Tests for the notifier module."""
-from pathlib import Path
+
 from unittest.mock import AsyncMock
 
-import pytest
 from freezegun import freeze_time
 
 from newsroom.config import Source
@@ -12,7 +11,6 @@ from newsroom.notifier import (
     meets_threshold,
 )
 from newsroom.state import State
-
 
 HOUR_DAYTIME_1 = 10
 HOUR_DAYTIME_2 = 15
@@ -46,14 +44,26 @@ def test_meets_threshold_false_in_quiet_hours() -> None:
 
 
 def _insert_scored_item(state: State, importance: int, title: str = "T") -> int:
-    state.upsert_source(Source(
-        name="a", category="ai", subcategory="lab",
-        url="https://a.com/rss", feed_type="rss", interval_seconds=3600,
-    ))
+    state.upsert_source(
+        Source(
+            name="a",
+            category="ai",
+            subcategory="lab",
+            url="https://a.com/rss",
+            feed_type="rss",
+            interval_seconds=3600,
+        )
+    )
     src_id = state.get_source_by_name("a")["id"]
     state.insert_item(
-        source_id=src_id, item_hash="h1", url="https://a.com/x", title=title,
-        author=None, published_at=None, raw_summary="body", category="ai",
+        source_id=src_id,
+        item_hash="h1",
+        url="https://a.com/x",
+        title=title,
+        author=None,
+        published_at=None,
+        raw_summary="body",
+        category="ai",
     )
     item_id = state.list_items_by_status("new", limit=1)[0]["id"]
     state.mark_item_scored(item_id=item_id, importance=importance, reason="r", model="haiku")
