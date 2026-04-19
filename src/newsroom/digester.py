@@ -118,12 +118,13 @@ async def generate_digest(
 
     if not items:
         # No items → write/append placeholder, still mark digest
-        content = (
-            f"# News-Digest {date.strftime('%d.%m.%Y')} ({slot.capitalize()})\n\n"
-            "_Keine neuen Items seit dem letzten Digest._\n"
-            if slot == "morning"
-            else "\n\n---\n\n## Abend-Digest\n\n_Keine neuen Items seit Morgen-Digest._\n"
-        )
+        if slot == "morning":
+            content = (
+                f"# News-Digest {date.strftime('%d.%m.%Y')} ({slot.capitalize()})\n\n"
+                "_Keine neuen Items seit dem letzten Digest._\n"
+            )
+        else:
+            content = "\n\n---\n\n## Abend-Digest\n\n_Keine neuen Items seit Morgen-Digest._\n"
         _write_digest_file(target_file, content, slot=slot)
         state.insert_digest(
             date=date.isoformat(),
