@@ -1,0 +1,22 @@
+sources:
+  - name: arxiv-cs-cl
+    category: ai
+    subcategory: arxiv
+    url: https://arxiv.org/rss/cs.CL
+    feed_type: rss
+    interval_seconds: 86400
+    enabled: true
+  - name: simon-willison
+    category: ai
+    subcategory: curated
+    url: https://simonwillison.net/atom/everything/
+    feed_type: atom
+    interval_seconds: 3600
+    enabled: true
+  - name: disabled-source
+    category: ai
+    subcategory: lab
+    url: https://example.com/rss
+    feed_type: rss
+    interval_seconds: 3600
+    enabled: false

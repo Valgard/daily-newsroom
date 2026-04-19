@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.13.2",
     "pync>=2.0.3",
     "python-dateutil>=2.9.0.post0",
+    "pyyaml>=6.0.3",
     "rich>=15.0.0",
     "tenacity>=9.1.4",
     "typer>=0.24.1",
@@ -46,7 +47,8 @@ ignore = ["PLR0913"]  # too-many-arguments
 [tool.vulture]
 paths = ["src/"]
 min_confidence = 80
-ignore_decorators = ["@app.command", "@*.command", "@app.callback"]
+ignore_decorators = ["@app.command", "@*.command", "@app.callback", "@field_validator", "@*.validator"]
+ignore_names = ["cls"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
