@@ -283,6 +283,7 @@ class State:
         )
 
     def mark_item_notified(self, *, item_id: int) -> None:
+        """Stamp notification time. Status remains 'scored' — notified_at is the record."""
         conn = self.connection()
         conn.execute(
             "UPDATE items SET notified_at = datetime('now') WHERE id = ?",
