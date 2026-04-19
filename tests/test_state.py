@@ -277,3 +277,40 @@ def test_get_digest_returns_existing(state: State) -> None:
 
 def test_get_digest_returns_none_for_missing(state: State) -> None:
     assert state.get_digest("2026-04-19", "morning") is None
+
+
+def test_delete_digest_removes_row(state: State) -> None:
+    state.insert_digest(
+        date="2026-04-19", slot="morning", file_path="/tmp/m.md", item_count=5, model="opus"
+    )
+    assert state.get_digest("2026-04-19", "morning") is not None
+    state.delete_digest(date="2026-04-19", slot="morning")
+    assert state.get_digest("2026-04-19", "morning") is None
+
+
+def test_delete_digest_is_idempotent(state: State) -> None:
+    """Deleting a non-existent digest is a no-op, not an error."""
+    state.delete_digest(date="2026-04-19", slot="evening")
+
+
+def test_unmark_items_by_digest_label_clears_mark(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    state.insert_item(
+        **{
+            **_sample_item_kwargs(src["id"], title="T2"),
+            "item_hash": "h-t2",
+            "url": "https://example.com/b",
+        }
+    )
+    items = state.list_items_by_status("new", limit=10)
+    state.mark_item_digested(item_id=items[0]["id"], digest_label="2026-04-19-evening")
+    state.mark_item_digested(item_id=items[1]["id"], digest_label="2026-04-19-morning")
+
+    state.unmark_items_by_digest_label("2026-04-19-evening")
+
+    rows = state.connection().execute("SELECT included_in_digest FROM items ORDER BY id").fetchall()
+    # T1 (was evening-marked) → now NULL; T2 (morning-marked) → unchanged
+    assert rows[0]["included_in_digest"] is None
+    assert rows[1]["included_in_digest"] == "2026-04-19-morning"

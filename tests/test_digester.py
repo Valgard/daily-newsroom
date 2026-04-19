@@ -218,3 +218,84 @@ async def test_generate_digest_falls_back_on_llm_error(
     body = out.read_text()
     assert "Automatisch generiert" in body  # fallback marker
     assert "Title 0" in body  # items still listed
+
+
+# ── --force regeneration (fixes: IntegrityError on existing digest row;
+#    evening appending instead of replacing) ───────────────────────────
+
+
+async def test_generate_digest_force_regenerates_existing(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """--force must delete the old DB row + unmark items + rewrite the file."""
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# First run content"
+    # First run: normal generation
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    first_row = populated_state.get_digest("2026-04-19", "morning")
+    assert first_row is not None
+
+    # Second run with force=True — must succeed, not raise IntegrityError
+    mock_agent.ask.return_value = "# Second run content"
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        force=True,
+    )
+    second_row = populated_state.get_digest("2026-04-19", "morning")
+    assert second_row is not None
+    # Same (date, slot) UNIQUE but new content in file
+    file_body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
+    assert "Second run content" in file_body
+    assert "First run content" not in file_body
+
+
+async def test_generate_digest_force_evening_replaces_previous_evening(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """--force on evening must truncate the old '## Abend-Digest' section before append."""
+    output_root = tmp_path / "news"
+    morning_dir = output_root / "2026" / "04"
+    morning_dir.mkdir(parents=True)
+    (morning_dir / "2026-04-19.md").write_text(
+        "# News-Digest Morgen\n\nMorning body.\n\n---\n\n## Abend-Digest\n\nOld evening body.\n"
+    )
+
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "## Abend-Digest\n\nNew evening body.\n"
+
+    # Need to seed DB with matching existing digest + items so the force path activates
+    populated_state.insert_digest(
+        date="2026-04-19",
+        slot="evening",
+        file_path=str(morning_dir / "2026-04-19.md"),
+        item_count=3,
+        model="claude-opus-4-7",
+    )
+
+    await generate_digest(
+        state=populated_state,
+        slot="evening",
+        date=datetime(2026, 4, 19).date(),
+        output_root=output_root,
+        agent=mock_agent,
+        force=True,
+    )
+
+    body = (morning_dir / "2026-04-19.md").read_text()
+    # Morning section preserved
+    assert "Morning body." in body
+    # Old evening dropped, new evening present
+    assert "Old evening body." not in body
+    assert "New evening body." in body
+    # Exactly one '## Abend-Digest' header
+    assert body.count("## Abend-Digest") == 1

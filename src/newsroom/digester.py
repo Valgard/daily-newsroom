@@ -120,6 +120,12 @@ async def generate_digest(
     if existing and not force:
         logger.info("digest already exists for %s/%s, skipping", date, slot)
         return Path(existing["file_path"])
+    if existing and force:
+        # Clear previous digest's item-marks + DB row so regeneration is clean.
+        logger.info("--force: clearing previous digest for %s/%s", date, slot)
+        label = f"{date.isoformat()}-{slot}"
+        state.unmark_items_by_digest_label(label)
+        state.delete_digest(date=date.isoformat(), slot=slot)
 
     cutoff = _cutoff_for_slot(slot, state)
     items = state.list_items_for_digest(since_iso=cutoff)
@@ -137,7 +143,7 @@ async def generate_digest(
             )
         else:
             content = "\n\n---\n\n## Abend-Digest\n\n_Keine neuen Items seit Morgen-Digest._\n"
-        _write_digest_file(target_file, content, slot=slot)
+        _write_digest_file(target_file, content, slot=slot, force=force)
         state.insert_digest(
             date=date.isoformat(),
             slot=slot,
@@ -161,7 +167,7 @@ async def generate_digest(
         logger.warning("Opus digest call failed, using fallback: %s", e)
         content = _build_fallback_digest(items, slot=slot, date=date)
 
-    _write_digest_file(target_file, content, slot=slot)
+    _write_digest_file(target_file, content, slot=slot, force=force)
 
     for item in items:
         state.mark_item_digested(
@@ -178,15 +184,35 @@ async def generate_digest(
     return target_file
 
 
-def _write_digest_file(path: Path, content: str, *, slot: str) -> None:
-    """Write or append digest content. Morning creates; evening appends."""
+_EVENING_SECTION_MARKER = "## Abend-Digest"
+
+
+def _write_digest_file(path: Path, content: str, *, slot: str, force: bool = False) -> None:
+    """Write or append digest content. Morning creates; evening appends.
+
+    With `force=True` and an existing file, an evening regeneration truncates
+    the previous `## Abend-Digest` section before appending the new one, so
+    the morning section is preserved but the old evening is replaced instead
+    of duplicated. Morning regenerations always overwrite the whole file.
+    """
+    body = content if content.endswith("\n") else content + "\n"
     if slot == "morning" or not path.exists():
-        path.write_text(content if content.endswith("\n") else content + "\n")
-    else:
-        existing = path.read_text()
-        separator = "\n\n---\n\n" if not existing.endswith("\n---\n\n") else ""
-        body = content if content.endswith("\n") else content + "\n"
-        path.write_text(existing + separator + body)
+        path.write_text(body)
+        return
+
+    existing = path.read_text()
+    if force:
+        # Drop everything from the last '## Abend-Digest' onward so a new
+        # evening section takes its place. Also strip any trailing '---'
+        # separator that belonged to the old evening.
+        idx = existing.rfind(_EVENING_SECTION_MARKER)
+        if idx >= 0:
+            existing = existing[:idx].rstrip()
+            # Strip a dangling horizontal rule left from the old separator
+            existing = existing.rstrip("-").rstrip()
+            existing += "\n"
+    separator = "\n\n---\n\n" if not existing.endswith("\n---\n\n") else ""
+    path.write_text(existing + separator + body)
 
 
 def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: ANN001

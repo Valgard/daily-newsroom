@@ -412,6 +412,26 @@ class State:
             (date, slot),
         ).fetchone()
 
+    def delete_digest(self, *, date: str, slot: str) -> None:
+        """Remove the digests row for (date, slot). No-op if not present."""
+        conn = self.connection()
+        conn.execute(
+            "DELETE FROM digests WHERE date = ? AND slot = ?",
+            (date, slot),
+        )
+
+    def unmark_items_by_digest_label(self, label: str) -> None:
+        """Reset `included_in_digest = NULL` for all items tagged with `label`.
+
+        Used by --force to undo a previous digest's item-marking so the items
+        re-enter `list_items_for_digest` on the regeneration pass.
+        """
+        conn = self.connection()
+        conn.execute(
+            "UPDATE items SET included_in_digest = NULL WHERE included_in_digest = ?",
+            (label,),
+        )
+
     def get_last_digest_generated_at(self, slot: str) -> str | None:
         """Return ISO timestamp of most recent generation of given slot, or None."""
         conn = self.connection()
