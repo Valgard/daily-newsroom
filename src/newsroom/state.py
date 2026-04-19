@@ -13,10 +13,6 @@ DEFAULT_DB_PATH = Path.home() / "Library" / "Application Support" / "daily-newsr
 
 MIGRATIONS: dict[int, list[str]] = {
     1: [
-        """CREATE TABLE schema_version (
-            version INTEGER PRIMARY KEY,
-            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )""",
         """CREATE TABLE sources (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             name                TEXT UNIQUE NOT NULL,
@@ -111,12 +107,10 @@ class State:
         current = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] or 0
         for version in sorted(MIGRATIONS):
             if version > current:
-                for stmt in MIGRATIONS[version]:
-                    # skip re-creating schema_version from migration 1 (already exists)
-                    if "CREATE TABLE schema_version" in stmt:
-                        continue
-                    conn.execute(stmt)
-                conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
+                with conn:
+                    for stmt in MIGRATIONS[version]:
+                        conn.execute(stmt)
+                    conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
 
     # ── Sources ────────────────────────────────────────────────────────
 
@@ -164,6 +158,12 @@ class State:
         etag: str | None = None,
         last_modified: str | None = None,
     ) -> None:
+        """Update per-fetch state. `None` preserves existing values via COALESCE.
+
+        Intended for both 304 (only last_checked_at passed) and 200 responses.
+        Note: this method cannot clear etag/last_modified to NULL — callers that
+        need to do so must use a separate UPDATE. See spec §5.4.
+        """
         conn = self.connection()
         conn.execute(
             """UPDATE sources SET

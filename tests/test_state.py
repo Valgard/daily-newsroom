@@ -40,8 +40,8 @@ def test_upsert_source_inserts_new(state: State) -> None:
     row = state.get_source_by_name("arxiv-cs-cl")
     assert row is not None
     assert row["url"] == src.url
-    assert row["interval_seconds"] == 86400  # noqa: PLR2004
-    assert row["enabled"] == 1  # noqa: PLR2004
+    assert row["interval_seconds"] == 86400
+    assert row["enabled"] == 1
 
 
 def test_upsert_source_updates_existing(state: State) -> None:
@@ -51,7 +51,7 @@ def test_upsert_source_updates_existing(state: State) -> None:
     state.upsert_source(src2)
     row = state.get_source_by_name("arxiv-cs-cl")
     assert row["url"] == "https://arxiv.org/rss/cs.LG"
-    assert row["interval_seconds"] == 3600  # noqa: PLR2004
+    assert row["interval_seconds"] == 3600
 
 
 def test_list_enabled_sources_excludes_disabled(state: State) -> None:
@@ -82,7 +82,7 @@ def test_increment_source_error(state: State) -> None:
     state.increment_source_error("arxiv-cs-cl", "connection timed out")
     state.increment_source_error("arxiv-cs-cl", "connection timed out")
     row = state.get_source_by_name("arxiv-cs-cl")
-    assert row["consecutive_errors"] == 2  # noqa: PLR2004
+    assert row["consecutive_errors"] == 2
     assert row["last_error"] == "connection timed out"
 
 
