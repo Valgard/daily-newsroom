@@ -2516,7 +2516,7 @@ git commit -m "feat(notifier): threshold, quiet-hours, pync-based push"
 - Create: `config/prompts/digest_morning.md`
 - Create: `config/prompts/digest_evening.md`
 
-- [ ] **Step 1: Write morning-digest prompt**
+- [x] **Step 1: Write morning-digest prompt**
 
 Create `config/prompts/digest_morning.md`:
 
@@ -2553,7 +2553,7 @@ You are writing the **morning** news digest for a reader who wants to catch up o
 - Maximal 3 Sätze pro Kernaussage. Kein Preamble, kein Abschluss. Nur Markdown-Content.
 ```
 
-- [ ] **Step 2: Write evening-digest prompt**
+- [x] **Step 2: Write evening-digest prompt**
 
 Create `config/prompts/digest_evening.md` as the same template, but with `(Abend)` and note "Tages-Zusammenfassung since this morning":
 
@@ -2585,7 +2585,7 @@ You are writing the **evening** news digest for a reader who wants a day-end sum
 - Maximal 3 Sätze pro Kernaussage. Kein Preamble. Nur Markdown-Content.
 ```
 
-- [ ] **Step 3: Write failing tests**
+- [x] **Step 3: Write failing tests**
 
 Create `tests/test_digester.py`:
 
@@ -2725,7 +2725,7 @@ async def test_generate_digest_evening_appends(populated_state: State, tmp_path:
     assert "## Abend-Digest" in body
 ```
 
-- [ ] **Step 4: Run tests to verify failure**
+- [x] **Step 4: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_digester.py -v
@@ -2733,7 +2733,7 @@ uv run pytest tests/test_digester.py -v
 
 Expected: `ModuleNotFoundError: No module named 'newsroom.digester'`
 
-- [ ] **Step 5: Implement `src/newsroom/digester.py`**
+- [x] **Step 5: Implement `src/newsroom/digester.py`**
 
 ```python
 """Morning/evening digest generation via Opus."""
@@ -2901,7 +2901,7 @@ def _write_digest_file(path: Path, content: str, *, slot: str) -> None:
         path.write_text(existing + separator + (content if content.endswith("\n") else content + "\n"))
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_digester.py -v
@@ -2909,7 +2909,7 @@ uv run pytest tests/test_digester.py -v
 
 Expected: all tests PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/newsroom/digester.py tests/test_digester.py config/prompts/digest_morning.md config/prompts/digest_evening.md
