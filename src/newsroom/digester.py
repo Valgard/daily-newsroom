@@ -62,8 +62,19 @@ def _resolve_cross_link(item_url: str, summaries_dir: Path) -> Path | None:
     return None
 
 
+ITEM_BODY_MAX_CHARS = 1200
+
+
 def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  # noqa: ANN001
-    """Group items by subcategory and produce the markdown payload for the prompt."""
+    """Group items by subcategory and produce the markdown payload for the prompt.
+
+    Each item renders as:
+        - [importance] title · source · published=iso · url=url · reason=reason
+          > body (truncated to ITEM_BODY_MAX_CHARS)
+
+    `published_at` is passed so the digest prompt can express relative time
+    ("heute 14:30", "gestern", "vor 3h") without additional state injection.
+    """
     groups: dict[str, list] = defaultdict(list)
     for item in items:
         groups[item["source_subcategory"] or "other"].append(item)
@@ -79,11 +90,12 @@ def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  #
                     summary_link = f" | summary_path={link}"
             lines.append(
                 f"- [{item['importance']}] {item['title']} · {item['source_name']} · "
-                f"url={item['url']} · reason={item['score_reason']}{summary_link}"
+                f"published={item['published_at']} · url={item['url']} · "
+                f"reason={item['score_reason']}{summary_link}"
             )
             body = (item["raw_summary"] or "").strip().replace("\n", " ")
             if body:
-                lines.append(f"  > {body[:300]}")
+                lines.append(f"  > {body[:ITEM_BODY_MAX_CHARS]}")
         lines.append("")
     return "\n".join(lines)
 

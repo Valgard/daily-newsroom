@@ -96,6 +96,40 @@ def test_format_items_for_prompt_groups_by_subcategory(populated_state: State) -
     assert "curated" in formatted.lower() or "Curated" in formatted
 
 
+def test_format_items_for_prompt_includes_published_at(populated_state: State) -> None:
+    """Digest prompt needs published_at so Opus can render relative time."""
+    items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    formatted = format_items_for_prompt(items)
+    # Fixture items all have published_at="2026-04-19T02:00:00Z"
+    assert "published=2026-04-19T02:00:00Z" in formatted
+
+
+def test_format_items_for_prompt_preserves_body_up_to_1200_chars(populated_state: State) -> None:
+    """Body truncation is 1200 chars (was 300) — newsletter-style needs more material."""
+    src_id = populated_state.get_source_by_name("anthropic")["id"]
+    long_body = ("Claude 5 introduces native Model Context Protocol support. " * 30).strip()
+    assert len(long_body) > 1200  # noqa: PLR2004  sanity check on fixture
+    populated_state.insert_item(
+        source_id=src_id,
+        item_hash="h-long",
+        url="https://a.com/long",
+        title="Long body item",
+        author=None,
+        published_at="2026-04-19T03:00:00Z",
+        raw_summary=long_body,
+        category="ai",
+    )
+    new_items = populated_state.list_items_by_status("new", limit=10)
+    long_item = next(i for i in new_items if i["title"] == "Long body item")
+    populated_state.mark_item_scored(
+        item_id=long_item["id"], importance=5, reason="major", model="haiku"
+    )
+    items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    formatted = format_items_for_prompt(items)
+    # 800 chars of body must survive truncation (old 300-char limit would have failed this)
+    assert long_body[:800] in formatted
+
+
 async def test_generate_digest_writes_file(populated_state: State, tmp_path: Path) -> None:
     output_root = tmp_path / "news"
     mock_agent = AsyncMock()
