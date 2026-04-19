@@ -3732,7 +3732,7 @@ git commit -m "feat: phase-1 source config + github-releases parser"
 - Create: `scripts/install.sh`
 - Create: `scripts/uninstall.sh`
 
-- [ ] **Step 1: Write `scripts/run.sh`**
+- [x] **Step 1: Write `scripts/run.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -3754,7 +3754,7 @@ exec uv run python -m newsroom "$@"
 chmod +x scripts/run.sh
 ```
 
-- [ ] **Step 2: Write `config/launchd/de.svenpoeche.newsroom.fetch.plist`**
+- [x] **Step 2: Write `config/launchd/de.svenpoeche.newsroom.fetch.plist`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -3784,7 +3784,7 @@ chmod +x scripts/run.sh
 </plist>
 ```
 
-- [ ] **Step 3: Write `config/launchd/de.svenpoeche.newsroom.digest-morning.plist`**
+- [x] **Step 3: Write `config/launchd/de.svenpoeche.newsroom.digest-morning.plist`**
 
 Copy the fetch plist and change:
 - `Label` → `de.svenpoeche.newsroom.digest-morning`
@@ -3804,11 +3804,11 @@ Copy the fetch plist and change:
 - Remove `<key>RunAtLoad</key><true/>` (or set to `<false/>`).
 - Change log paths to `digest-morning.log` / `digest-morning.err.log`.
 
-- [ ] **Step 4: Write `digest-evening.plist`**
+- [x] **Step 4: Write `digest-evening.plist`**
 
 Same as morning but `Hour` = `20`, label `digest-evening`, log files named accordingly.
 
-- [ ] **Step 5: Write `scripts/install.sh`**
+- [x] **Step 5: Write `scripts/install.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -3855,7 +3855,7 @@ echo "Check launchd entries: launchctl list | grep newsroom"
 chmod +x scripts/install.sh
 ```
 
-- [ ] **Step 6: Write `scripts/uninstall.sh`**
+- [x] **Step 6: Write `scripts/uninstall.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -3881,7 +3881,7 @@ echo "Delete manually if desired."
 chmod +x scripts/uninstall.sh
 ```
 
-- [ ] **Step 7: Dry-run install (optional, actual install deferred)**
+- [x] **Step 7: Dry-run install (optional, actual install deferred)**
 
 ```bash
 # Verify plists parse correctly
@@ -3890,7 +3890,7 @@ plutil config/launchd/*.plist
 
 Expected: all output `OK`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add config/launchd scripts/run.sh scripts/install.sh scripts/uninstall.sh
