@@ -196,9 +196,9 @@ async def fetch_due_sources(
     `category` and `source` are optional debug filters — only matching sources are
     considered. Production launchd invocations pass neither, so the full set runs.
     """
-    from newsroom.state import State as _State  # noqa: PLC0415 (avoid circular dep)
+    from newsroom.state import State  # noqa: PLC0415 (avoid circular dep)
 
-    assert isinstance(state, _State)
+    assert isinstance(state, State)
 
     results: list[FetchResult] = []
     sources = state.list_enabled_sources()
