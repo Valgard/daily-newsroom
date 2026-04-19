@@ -1,0 +1,20 @@
+{
+  "hits": [
+    {
+      "objectID": "12345",
+      "title": "HN Story One",
+      "url": "https://example.com/hn-one",
+      "author": "hnuser",
+      "points": 150,
+      "created_at": "2026-04-19T09:00:00Z"
+    },
+    {
+      "objectID": "12346",
+      "title": "HN Story Two",
+      "url": "https://example.com/hn-two",
+      "author": "hnuser2",
+      "points": 200,
+      "created_at": "2026-04-19T09:30:00Z"
+    }
+  ]
+}

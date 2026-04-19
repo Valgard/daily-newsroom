@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import feedparser
 import httpx
+from dateutil import parser as dateparser
 
 USER_AGENT = "daily-newsroom/0.1 (+https://github.com/none)"
 DEFAULT_TIMEOUT = 30.0
@@ -80,3 +84,89 @@ async def fetch_one_raw(source_row: dict[str, Any] | Any) -> FetchOutcome:
         etag=response.headers.get("ETag"),
         last_modified=response.headers.get("Last-Modified"),
     )
+
+
+@dataclass
+class ParsedItem:
+    """A uniform item extracted from any feed type."""
+
+    url: str
+    title: str
+    author: str | None
+    published_at: str | None  # ISO 8601 string, or None
+    raw_summary: str | None
+
+    @property
+    def item_hash(self) -> str:
+        return hashlib.sha256(f"{self.url}\n{self.title}".encode()).hexdigest()[:16]
+
+
+def parse_feed(raw: bytes, *, feed_type: str) -> list[ParsedItem]:
+    """Parse raw feed body into uniform items. Never raises — returns [] on malformed input."""
+    if feed_type in ("rss", "atom"):
+        return _parse_feedparser(raw)
+    if feed_type == "json":
+        return _parse_json_hn(raw)
+    if feed_type == "html-scrape":
+        # Reserved for a later task that adds OpenAI scraping; Phase 1 primarily uses RSS
+        return []
+    return []
+
+
+def _parse_feedparser(raw: bytes) -> list[ParsedItem]:
+    parsed = feedparser.parse(raw)
+    if not parsed.entries:
+        return []
+
+    items: list[ParsedItem] = []
+    for entry in parsed.entries:
+        url = entry.get("link")
+        title = entry.get("title")
+        if not url or not title:
+            continue
+        author = entry.get("author")
+        published = entry.get("published", entry.get("updated"))
+        summary = entry.get("summary")
+        items.append(
+            ParsedItem(
+                url=url,
+                title=title,
+                author=author,
+                published_at=_normalize_date(published),
+                raw_summary=summary,
+            )
+        )
+    return items
+
+
+def _parse_json_hn(raw: bytes) -> list[ParsedItem]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    hits = data.get("hits", [])
+    items: list[ParsedItem] = []
+    for hit in hits:
+        url = hit.get("url")
+        title = hit.get("title")
+        if not url or not title:
+            continue
+        items.append(
+            ParsedItem(
+                url=url,
+                title=title,
+                author=hit.get("author"),
+                published_at=hit.get("created_at"),
+                raw_summary=f"HN points: {hit.get('points', 0)}",
+            )
+        )
+    return items
+
+
+def _normalize_date(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    try:
+        return dateparser.parse(raw).isoformat()
+    except (ValueError, TypeError):
+        return None

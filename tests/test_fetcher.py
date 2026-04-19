@@ -1,11 +1,12 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import pytest
 from freezegun import freeze_time
 from pytest_httpx import HTTPXMock
 
-from newsroom.fetcher import fetch_one_raw, should_fetch
+from newsroom.fetcher import ParsedItem, fetch_one_raw, parse_feed, should_fetch
 
 
 def _source_row(**overrides) -> dict:
@@ -103,3 +104,47 @@ async def test_fetch_one_raw_network_error_returns_error(
     assert outcome.status is None
     assert outcome.error is not None
     assert message.lower() in outcome.error.lower()
+
+
+def test_parse_rss(fixtures_dir: Path) -> None:
+    raw = (fixtures_dir / "feed_rss_sample.xml").read_bytes()
+    items = parse_feed(raw, feed_type="rss")
+    assert len(items) == 2
+    first = items[0]
+    assert first.title == "First Item"
+    assert first.url == "https://example.com/first"
+    assert first.author is not None
+    assert first.published_at is not None
+
+
+def test_parse_atom(fixtures_dir: Path) -> None:
+    raw = (fixtures_dir / "feed_atom_sample.xml").read_bytes()
+    items = parse_feed(raw, feed_type="atom")
+    assert len(items) == 1
+    assert items[0].title == "Atom Entry One"
+    assert items[0].url == "https://example.com/atom/1"
+    assert items[0].author == "Atom Author"
+
+
+def test_parse_json_hn(fixtures_dir: Path) -> None:
+    raw = (fixtures_dir / "feed_hn_algolia.json").read_bytes()
+    items = parse_feed(raw, feed_type="json")
+    assert len(items) == 2
+    assert items[0].title == "HN Story One"
+    assert items[0].url == "https://example.com/hn-one"
+
+
+def test_parse_rss_malformed_returns_empty() -> None:
+    items = parse_feed(b"<not-rss/>", feed_type="rss")
+    assert items == []
+
+
+def test_parsed_item_has_stable_hash() -> None:
+    item_a = ParsedItem(
+        url="https://x.com/a", title="T", author=None, published_at=None, raw_summary=None
+    )
+    item_b = ParsedItem(
+        url="https://x.com/a", title="T", author="different", published_at="later", raw_summary=None
+    )
+    assert item_a.item_hash == item_b.item_hash
+    assert len(item_a.item_hash) == 16
