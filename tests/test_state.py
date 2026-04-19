@@ -293,6 +293,83 @@ def test_delete_digest_is_idempotent(state: State) -> None:
     state.delete_digest(date="2026-04-19", slot="evening")
 
 
+def test_list_items_for_digest_excludes_low_importance(state: State) -> None:
+    """Digest must include only importance >= 3 — level 2 is routine noise."""
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    for title, importance in [("High", 5), ("Mid", 3), ("Low", 2), ("Trivia", 1)]:
+        state.insert_item(
+            source_id=src["id"],
+            item_hash=f"h-{title}",
+            url=f"https://e.com/{title}",
+            title=title,
+            author=None,
+            published_at="2026-04-19T10:00:00+00:00",
+            raw_summary="body",
+            category="ai",
+        )
+        item = next(i for i in state.list_items_by_status("new", limit=10) if i["title"] == title)
+        state.mark_item_scored(item_id=item["id"], importance=importance, reason="r", model="h")
+
+    got = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    titles = {r["title"] for r in got}
+    assert titles == {"High", "Mid"}
+
+
+def test_list_items_for_digest_excludes_old_published_at(state: State) -> None:
+    """Historical sitemap-scrape items must not land in today's digest."""
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(
+        source_id=src["id"],
+        item_hash="h-old",
+        url="https://e.com/old",
+        title="Old article",
+        author=None,
+        published_at="2023-08-15T10:00:00+00:00",
+        raw_summary="body",
+        category="ai",
+    )
+    state.insert_item(
+        source_id=src["id"],
+        item_hash="h-new",
+        url="https://e.com/new",
+        title="New article",
+        author=None,
+        published_at="2026-04-19T10:00:00+00:00",
+        raw_summary="body",
+        category="ai",
+    )
+    for title in ("Old article", "New article"):
+        item = next(i for i in state.list_items_by_status("new", limit=10) if i["title"] == title)
+        state.mark_item_scored(item_id=item["id"], importance=4, reason="r", model="h")
+
+    got = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    titles = {r["title"] for r in got}
+    assert titles == {"New article"}
+
+
+def test_list_items_for_digest_includes_items_without_published_at(state: State) -> None:
+    """Items with published_at=NULL still appear (fallback to scored_at semantics)."""
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(
+        source_id=src["id"],
+        item_hash="h-nopub",
+        url="https://e.com/nopub",
+        title="No publish date",
+        author=None,
+        published_at=None,
+        raw_summary="body",
+        category="ai",
+    )
+    item = state.list_items_by_status("new", limit=10)[0]
+    state.mark_item_scored(item_id=item["id"], importance=5, reason="r", model="h")
+    got = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    assert len(got) == 1
+    assert got[0]["title"] == "No publish date"
+
+
 def test_unmark_items_by_digest_label_clears_mark(state: State) -> None:
     state.upsert_source(_sample_source())
     src = state.get_source_by_name("arxiv-cs-cl")

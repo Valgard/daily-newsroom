@@ -307,6 +307,17 @@ class State:
         return list(conn.execute(sql, (status, limit)).fetchall())
 
     def list_items_for_digest(self, since_iso: str) -> list[sqlite3.Row]:
+        """Items eligible for the next digest.
+
+        Filters:
+        - status='scored' AND not already in another digest
+        - scored_at >= cutoff
+        - importance >= 3 (level 2 is routine noise)
+        - published_at >= cutoff OR NULL (sitemap-scrape may surface historical
+          URLs — those have old published_at and must not appear in today's
+          digest; items with unknown published_at still pass, trusting
+          scored_at as discovery signal)
+        """
         conn = self.connection()
         sql = (
             "SELECT items.*, sources.name AS source_name,"
@@ -314,9 +325,11 @@ class State:
             " FROM items JOIN sources ON items.source_id = sources.id"
             " WHERE items.status = 'scored' AND items.included_in_digest IS NULL"
             "  AND items.scored_at >= ?"
+            "  AND items.importance >= 3"
+            "  AND (items.published_at IS NULL OR items.published_at >= ?)"
             " ORDER BY items.importance DESC, items.published_at DESC"
         )
-        return list(conn.execute(sql, (since_iso,)).fetchall())
+        return list(conn.execute(sql, (since_iso, since_iso)).fetchall())
 
     def mark_item_scored(
         self,
