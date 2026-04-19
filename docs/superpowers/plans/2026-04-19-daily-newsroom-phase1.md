@@ -2926,7 +2926,7 @@ git commit -m "feat(digester): morning/evening digest generation with cross-link
 - Modify: `src/newsroom/digester.py`
 - Modify: `tests/test_digester.py`
 
-- [ ] **Step 1: Append tests**
+- [x] **Step 1: Append tests**
 
 ```python
 async def test_generate_digest_falls_back_on_llm_error(populated_state: State, tmp_path: Path) -> None:
@@ -2944,7 +2944,7 @@ async def test_generate_digest_falls_back_on_llm_error(populated_state: State, t
     assert "Title 0" in body  # items still listed
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 ```bash
 uv run pytest tests/test_digester.py::test_generate_digest_falls_back_on_llm_error -v
@@ -2952,7 +2952,7 @@ uv run pytest tests/test_digester.py::test_generate_digest_falls_back_on_llm_err
 
 Expected: FAIL (AgentError propagates).
 
-- [ ] **Step 3: Update `generate_digest` to catch AgentError and write fallback**
+- [x] **Step 3: Update `generate_digest` to catch AgentError and write fallback**
 
 In `src/newsroom/digester.py`, modify the LLM-call section of `generate_digest`:
 
@@ -3004,7 +3004,7 @@ def _build_fallback_digest(items, *, slot: str, date: _date) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 uv run pytest tests/test_digester.py -v
@@ -3012,7 +3012,7 @@ uv run pytest tests/test_digester.py -v
 
 Expected: all PASS (including the new fallback test).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/newsroom/digester.py tests/test_digester.py
