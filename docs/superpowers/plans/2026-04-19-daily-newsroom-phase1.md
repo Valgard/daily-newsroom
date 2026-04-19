@@ -58,7 +58,7 @@ Tasks are ordered by dependency. Each produces a committable, tested unit.
 - Create: `tests/__init__.py`
 - Create: `tests/conftest.py`
 
-- [ ] **Step 1: Initialize uv project with Python 3.12**
+- [x] **Step 1: Initialize uv project with Python 3.12**
 
 ```bash
 uv init --package --python 3.12 --name newsroom --lib
@@ -66,25 +66,25 @@ uv init --package --python 3.12 --name newsroom --lib
 
 This creates `pyproject.toml`, `src/newsroom/__init__.py`, and `.python-version`.
 
-- [ ] **Step 2: Set asdf Python version**
+- [x] **Step 2: Set asdf Python version**
 
 ```bash
 echo "python 3.12.7" > .tool-versions
 ```
 
-- [ ] **Step 3: Add runtime dependencies**
+- [x] **Step 3: Add runtime dependencies**
 
 ```bash
 uv add claude-agent-sdk feedparser httpx pync pydantic typer rich python-dateutil tenacity anyio
 ```
 
-- [ ] **Step 4: Add dev dependencies**
+- [x] **Step 4: Add dev dependencies**
 
 ```bash
 uv add --dev ruff vulture pytest pytest-asyncio pytest-mock pytest-httpx freezegun
 ```
 
-- [ ] **Step 5: Write `pyproject.toml` tool configuration**
+- [x] **Step 5: Write `pyproject.toml` tool configuration**
 
 Append to `pyproject.toml`:
 
@@ -109,7 +109,7 @@ addopts = "-m 'not real_llm'"
 newsroom = "newsroom.cli:app"
 ```
 
-- [ ] **Step 6: Write `src/newsroom/__main__.py`**
+- [x] **Step 6: Write `src/newsroom/__main__.py`**
 
 ```python
 """Entry point for `python -m newsroom`."""
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     app()
 ```
 
-- [ ] **Step 7: Write placeholder `src/newsroom/cli.py`**
+- [x] **Step 7: Write placeholder `src/newsroom/cli.py`**
 
 ```python
 """CLI entry point. Real subcommands added in Task 14."""
@@ -135,14 +135,14 @@ def version() -> None:
     print(f"newsroom {__version__}")
 ```
 
-- [ ] **Step 8: Set version in `src/newsroom/__init__.py`**
+- [x] **Step 8: Set version in `src/newsroom/__init__.py`**
 
 ```python
 """Daily Newsroom — local news-digest agent."""
 __version__ = "0.1.0"
 ```
 
-- [ ] **Step 9: Write `tests/conftest.py`**
+- [x] **Step 9: Write `tests/conftest.py`**
 
 ```python
 """Shared pytest fixtures."""
@@ -159,7 +159,7 @@ def fixtures_dir() -> Path:
     return FIXTURES
 ```
 
-- [ ] **Step 10: Create empty `tests/__init__.py` and `tests/fixtures/` directory**
+- [x] **Step 10: Create empty `tests/__init__.py` and `tests/fixtures/` directory**
 
 ```bash
 touch tests/__init__.py
@@ -167,7 +167,7 @@ mkdir -p tests/fixtures
 touch tests/fixtures/.gitkeep
 ```
 
-- [ ] **Step 11: Verify tooling runs**
+- [x] **Step 11: Verify tooling runs**
 
 ```bash
 uv run pytest
@@ -180,7 +180,7 @@ Expected:
 - `ruff check` → "All checks passed!"
 - `python -m newsroom version` → `newsroom 0.1.0`
 
-- [ ] **Step 12: Commit**
+- [x] **Step 12: Commit**
 
 ```bash
 git add .
