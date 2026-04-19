@@ -23,15 +23,33 @@ sources:
     enabled: true
 
   # Tier 1: Lab blogs
-  # Anthropic removed their public RSS (404 as of 2026-04); no replacement found.
-  # Re-enable if they publish one again; check https://www.anthropic.com/news periodically.
+  # Anthropic has no public RSS; we discover articles via their sitemap.xml
+  # (1587 entries with real per-article <lastmod>) and scrape og:title/description
+  # per new URL. Same strategy for engineering + research subpaths.
   - name: anthropic-news
     category: ai
     subcategory: lab
-    url: https://www.anthropic.com/news/rss.xml
-    feed_type: rss
+    url: https://www.anthropic.com/sitemap.xml
+    feed_type: sitemap-scrape
     interval_seconds: 3600
-    enabled: false
+    enabled: true
+    url_filter: '^/news/[^/]+$'
+  - name: anthropic-engineering
+    category: ai
+    subcategory: lab
+    url: https://www.anthropic.com/sitemap.xml
+    feed_type: sitemap-scrape
+    interval_seconds: 3600
+    enabled: true
+    url_filter: '^/engineering/[^/]+$'
+  - name: anthropic-research
+    category: ai
+    subcategory: lab
+    url: https://www.anthropic.com/sitemap.xml
+    feed_type: sitemap-scrape
+    interval_seconds: 3600
+    enabled: true
+    url_filter: '^/research/[^/]+$'
   - name: openai-blog
     category: ai
     subcategory: lab
@@ -46,8 +64,9 @@ sources:
     feed_type: rss
     interval_seconds: 3600
     enabled: true
-  # Meta AI blog has no RSS; ai.meta.com/* returns 400 for feed paths.
-  # about.fb.com/feed/ works but mixes non-AI content.
+  # Meta AI blog has no RSS, no sitemap (ai.meta.com/sitemap.xml returns 404),
+  # and the blog index is a pure JS SPA with no static article links.
+  # Scraping would require a headless browser — Phase-1 scope violation.
   - name: meta-ai-blog
     category: ai
     subcategory: lab
@@ -92,15 +111,17 @@ sources:
     feed_type: rss
     interval_seconds: 21600
     enabled: true
-  # The Batch is a newsletter-first product; deeplearning.ai/the-batch/feed/ returns 404.
-  # info.deeplearning.ai/rss.xml and beehiiv mirrors also 404. Disabled until alternative feed found.
+  # The Batch has no RSS; sitemap-0.xml has ~800 URLs but <lastmod> is the daily
+  # site-build time (not article dates). We trust og:article:published_time per
+  # URL instead — see the variety-heuristic fallback in parse_sitemap_scrape.
   - name: the-batch
     category: ai
     subcategory: curated
-    url: https://www.deeplearning.ai/the-batch/feed/
-    feed_type: rss
+    url: https://www.deeplearning.ai/sitemap-0.xml
+    feed_type: sitemap-scrape
     interval_seconds: 43200
-    enabled: false
+    enabled: true
+    url_filter: '^/the-batch/[^/]+/$'
 
   # Tier 3: Community
   - name: hackernews-ai
