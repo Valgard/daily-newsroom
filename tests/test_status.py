@@ -57,8 +57,25 @@ def test_format_relative_time_hours_and_minutes() -> None:
 
 @freeze_time("2026-04-19 10:00:00")
 def test_next_fetch_for_ready_when_never_checked() -> None:
-    row = {"disabled_until": None, "last_checked_at": None, "interval_seconds": 3600}
+    row = {
+        "disabled_until": None,
+        "last_checked_at": None,
+        "interval_seconds": 3600,
+        "consecutive_errors": 0,
+    }
     assert _next_fetch_for(row, datetime.now(UTC)) == "ready"
+
+
+@freeze_time("2026-04-19 10:00:00")
+def test_next_fetch_for_retry_when_never_checked_but_has_errors() -> None:
+    # Source tried and failed before ever succeeding (e.g. dead URL, HTTP 404)
+    row = {
+        "disabled_until": None,
+        "last_checked_at": None,
+        "interval_seconds": 3600,
+        "consecutive_errors": 3,
+    }
+    assert _next_fetch_for(row, datetime.now(UTC)) == "retry"
 
 
 @freeze_time("2026-04-19 10:00:00")
@@ -67,6 +84,7 @@ def test_next_fetch_for_due_in_future() -> None:
         "disabled_until": None,
         "last_checked_at": "2026-04-19T09:45:00+00:00",  # 15 min ago
         "interval_seconds": 3600,
+        "consecutive_errors": 0,
     }
     # next fetch = 45 min from now
     assert _next_fetch_for(row, datetime.now(UTC)) == "45min"
@@ -78,6 +96,7 @@ def test_next_fetch_for_overdue() -> None:
         "disabled_until": None,
         "last_checked_at": "2026-04-19T08:00:00+00:00",  # 2h ago, interval 1h
         "interval_seconds": 3600,
+        "consecutive_errors": 0,
     }
     assert _next_fetch_for(row, datetime.now(UTC)) == "overdue"
 
@@ -88,6 +107,7 @@ def test_next_fetch_for_disabled_until_future() -> None:
         "disabled_until": "2026-04-19T11:00:00+00:00",  # 1h in future
         "last_checked_at": "2026-04-19T09:00:00+00:00",
         "interval_seconds": 3600,
+        "consecutive_errors": 0,
     }
     result = _next_fetch_for(row, datetime.now(UTC))
     assert "disabled" in result
@@ -100,6 +120,7 @@ def test_next_fetch_for_disabled_in_past_falls_through() -> None:
         "disabled_until": "2026-04-19T09:00:00+00:00",
         "last_checked_at": "2026-04-19T09:45:00+00:00",
         "interval_seconds": 3600,
+        "consecutive_errors": 0,
     }
     assert _next_fetch_for(row, datetime.now(UTC)) == "45min"
 
@@ -111,6 +132,7 @@ def test_next_fetch_for_naive_iso_string() -> None:
         "disabled_until": None,
         "last_checked_at": "2026-04-19T09:45:00",  # naive
         "interval_seconds": 3600,
+        "consecutive_errors": 0,
     }
     # astimezone(UTC) assumes local time for naive; we still want a usable output
     result = _next_fetch_for(row, datetime.now(UTC))

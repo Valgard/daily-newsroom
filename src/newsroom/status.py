@@ -50,7 +50,9 @@ def _next_fetch_for(source_row: Any, now: datetime) -> str:
 
     last_checked = source_row["last_checked_at"]
     if last_checked is None:
-        return "ready"
+        # Never successfully fetched; `consecutive_errors` distinguishes
+        # "never tried" from "tried and failed, will retry next tick".
+        return "retry" if source_row["consecutive_errors"] else "ready"
 
     try:
         last = datetime.fromisoformat(last_checked).astimezone(UTC)
