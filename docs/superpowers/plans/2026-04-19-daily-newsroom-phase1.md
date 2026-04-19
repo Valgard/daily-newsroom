@@ -1009,14 +1009,14 @@ git commit -m "feat(state): items and digests CRUD"
 - Create: `config/prompts/.gitkeep`
 - Create: `tests/test_agent_client.py`
 
-- [ ] **Step 1: Create prompts directory and placeholder**
+- [x] **Step 1: Create prompts directory and placeholder**
 
 ```bash
 mkdir -p config/prompts
 touch config/prompts/.gitkeep
 ```
 
-- [ ] **Step 2: Write a fixture prompt for testing**
+- [x] **Step 2: Write a fixture prompt for testing**
 
 Create `tests/fixtures/prompt_test_echo.md`:
 
@@ -1024,7 +1024,7 @@ Create `tests/fixtures/prompt_test_echo.md`:
 Respond with a JSON object: `{"echoed": "<value>"}` where value is `{{ value }}`.
 ```
 
-- [ ] **Step 3: Write failing tests**
+- [x] **Step 3: Write failing tests**
 
 Create `tests/test_agent_client.py`:
 
@@ -1089,7 +1089,7 @@ async def _mock_stream(text: str):
     yield _Msg(text)
 ```
 
-- [ ] **Step 4: Run tests to verify failure**
+- [x] **Step 4: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_agent_client.py -v
@@ -1097,7 +1097,7 @@ uv run pytest tests/test_agent_client.py -v
 
 Expected: `ModuleNotFoundError: No module named 'newsroom.agent_client'`
 
-- [ ] **Step 5: Implement `src/newsroom/agent_client.py`**
+- [x] **Step 5: Implement `src/newsroom/agent_client.py`**
 
 ```python
 """Thin wrapper around claude-agent-sdk with prompt loading and JSON parsing."""
@@ -1212,7 +1212,7 @@ class AgentClient:
             raise ValueError(f"unknown parse mode: {parse}")
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_agent_client.py -v
@@ -1220,7 +1220,7 @@ uv run pytest tests/test_agent_client.py -v
 
 Expected: 5 tests PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/newsroom/agent_client.py tests/test_agent_client.py tests/fixtures/prompt_test_echo.md config/prompts/.gitkeep
