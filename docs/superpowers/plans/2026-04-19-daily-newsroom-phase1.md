@@ -3525,7 +3525,7 @@ git commit -m "feat(logging): rich stdout + jsonl events"
 - Create: `config/sources.yaml`
 - Review + polish: `config/prompts/*.md` (already exist)
 
-- [ ] **Step 1: Write `config/sources.yaml`**
+- [x] **Step 1: Write `config/sources.yaml`**
 
 ```yaml
 sources:
@@ -3652,7 +3652,7 @@ sources:
     enabled: true
 ```
 
-- [ ] **Step 2: GitHub-releases JSON parser (quick extension)**
+- [x] **Step 2: GitHub-releases JSON parser (quick extension)**
 
 The existing `_parse_json_hn` only handles Algolia JSON. Add a GitHub-releases variant:
 
@@ -3703,7 +3703,7 @@ def _parse_json_github_releases(releases: list) -> list[ParsedItem]:
     return items
 ```
 
-- [ ] **Step 3: Validate**
+- [x] **Step 3: Validate**
 
 ```bash
 uv run python -m newsroom validate-config
@@ -3711,7 +3711,7 @@ uv run python -m newsroom validate-config
 
 Expected: `✓ 16 sources loaded from config/sources.yaml`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add config/sources.yaml src/newsroom/fetcher.py
