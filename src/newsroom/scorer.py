@@ -38,7 +38,10 @@ async def score_pending_items(
                 model=SCORING_MODEL,
                 parse="json",
             )
-            importance = int(result.get("importance", 2))
+            try:
+                importance = int(result.get("importance", 2))
+            except (TypeError, ValueError):
+                importance = 2
             if not 1 <= importance <= 5:  # noqa: PLR2004
                 importance = 2
             reason = str(result.get("reason", ""))
