@@ -1,0 +1,172 @@
+"""Morning/evening digest generation via Opus."""
+
+from __future__ import annotations
+
+import logging
+from collections import defaultdict
+from datetime import date as _date
+from datetime import datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from newsroom.agent_client import AgentClient
+
+logger = logging.getLogger(__name__)
+
+
+BERLIN_TZ = ZoneInfo("Europe/Berlin")
+DIGEST_MODEL = "claude-opus-4-7"
+DEFAULT_OUTPUT_ROOT = Path.home() / "Documents" / "!AI" / "news"
+
+MORNING_START_HOUR = 5
+MORNING_END_HOUR = 12  # exclusive
+EVENING_START_HOUR = 16
+EVENING_END_HOUR = 24  # exclusive
+
+
+class NoSlotError(Exception):
+    """Current hour is outside morning and evening windows."""
+
+
+def determine_slot(now: datetime | None = None) -> str:
+    now = now or datetime.now(BERLIN_TZ)
+    if MORNING_START_HOUR <= now.hour < MORNING_END_HOUR:
+        return "morning"
+    if EVENING_START_HOUR <= now.hour < EVENING_END_HOUR:
+        return "evening"
+    raise NoSlotError(f"hour {now.hour} is not within morning or evening windows")
+
+
+def _cutoff_for_slot(slot: str, state) -> str:  # noqa: ANN001
+    """ISO timestamp: items scored AFTER this are eligible."""
+    # Last digest of the OTHER slot defines the cutoff
+    other = "evening" if slot == "morning" else "morning"
+    last = state.get_last_digest_generated_at(other)
+    if last:
+        return last
+    # No prior digest: use 24h ago
+    return (datetime.now(BERLIN_TZ) - timedelta(days=1)).isoformat()
+
+
+def _resolve_cross_link(item_url: str, summaries_dir: Path) -> Path | None:
+    """Check if an article_summaries file exists matching this URL."""
+    if not summaries_dir.exists():
+        return None
+    for f in summaries_dir.glob("*.md"):
+        # cheap check: URL appears in the file
+        try:
+            if item_url in f.read_text(errors="replace"):
+                return f
+        except OSError:
+            continue
+    return None
+
+
+def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  # noqa: ANN001
+    """Group items by subcategory and produce the markdown payload for the prompt."""
+    groups: dict[str, list] = defaultdict(list)
+    for item in items:
+        groups[item["source_subcategory"] or "other"].append(item)
+
+    lines: list[str] = []
+    for subcat in sorted(groups):
+        lines.append(f"### {subcat}")
+        for item in sorted(groups[subcat], key=lambda x: (-x["importance"], x["title"])):
+            summary_link = ""
+            if summaries_dir is not None:
+                link = _resolve_cross_link(item["url"], summaries_dir)
+                if link:
+                    summary_link = f" | summary_path={link}"
+            lines.append(
+                f"- [{item['importance']}] {item['title']} · {item['source_name']} · "
+                f"url={item['url']} · reason={item['score_reason']}{summary_link}"
+            )
+            body = (item["raw_summary"] or "").strip().replace("\n", " ")
+            if body:
+                lines.append(f"  > {body[:300]}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+async def generate_digest(
+    *,
+    state,  # noqa: ANN001
+    slot: str,
+    date: _date,
+    output_root: Path = DEFAULT_OUTPUT_ROOT,
+    summaries_dir: Path | None = None,
+    agent: AgentClient | None = None,
+    force: bool = False,
+) -> Path:
+    """Generate digest for the given slot+date. Returns path of written file."""
+    if agent is None:
+        agent = AgentClient()  # noqa: PLC0415
+    if summaries_dir is None:
+        summaries_dir = Path.home() / "Documents" / "!AI" / "article_summaries"
+
+    existing = state.get_digest(date.isoformat(), slot)
+    if existing and not force:
+        logger.info("digest already exists for %s/%s, skipping", date, slot)
+        return Path(existing["file_path"])
+
+    cutoff = _cutoff_for_slot(slot, state)
+    items = state.list_items_for_digest(since_iso=cutoff)
+
+    target_dir = output_root / f"{date.year:04d}" / f"{date.month:02d}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_file = target_dir / f"{date.isoformat()}.md"
+
+    if not items:
+        # No items → write/append placeholder, still mark digest
+        content = (
+            f"# News-Digest {date.strftime('%d.%m.%Y')} ({slot.capitalize()})\n\n"
+            "_Keine neuen Items seit dem letzten Digest._\n"
+            if slot == "morning"
+            else "\n\n---\n\n## Abend-Digest\n\n_Keine neuen Items seit Morgen-Digest._\n"
+        )
+        _write_digest_file(target_file, content, slot=slot)
+        state.insert_digest(
+            date=date.isoformat(),
+            slot=slot,
+            file_path=str(target_file),
+            item_count=0,
+            model=DIGEST_MODEL,
+        )
+        return target_file
+
+    items_md = format_items_for_prompt(items, summaries_dir=summaries_dir)
+    date_de = date.strftime("%-d. %B %Y")  # "19. April 2026" on macOS/Linux
+
+    content = await agent.ask(
+        prompt_name=f"digest_{slot}",
+        variables={"items_markdown": items_md, "date_de": date_de},
+        model=DIGEST_MODEL,
+        parse="text",
+    )
+
+    _write_digest_file(target_file, content, slot=slot)
+
+    for item in items:
+        state.mark_item_digested(
+            item_id=item["id"],
+            digest_label=f"{date.isoformat()}-{slot}",
+        )
+    state.insert_digest(
+        date=date.isoformat(),
+        slot=slot,
+        file_path=str(target_file),
+        item_count=len(items),
+        model=DIGEST_MODEL,
+    )
+    return target_file
+
+
+def _write_digest_file(path: Path, content: str, *, slot: str) -> None:
+    """Write or append digest content. Morning creates; evening appends."""
+    if slot == "morning" or not path.exists():
+        path.write_text(content if content.endswith("\n") else content + "\n")
+    else:
+        existing = path.read_text()
+        separator = "\n\n---\n\n" if not existing.endswith("\n---\n\n") else ""
+        body = content if content.endswith("\n") else content + "\n"
+        path.write_text(existing + separator + body)
