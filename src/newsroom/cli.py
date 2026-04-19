@@ -214,5 +214,8 @@ def notify(
 
 @app.command()
 def status() -> None:
-    """Print current state summary (real implementation in Task 15)."""
-    console.print("Status (implemented in Task 15)")
+    """Print status overview: auth, DB, sources, today's activity."""
+    from newsroom.status import print_status  # noqa: PLC0415
+
+    state = _bootstrap_state()
+    print_status(state, console=console)

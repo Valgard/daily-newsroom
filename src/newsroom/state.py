@@ -384,3 +384,24 @@ class State:
             (slot,),
         ).fetchone()
         return row[0] if row else None
+
+    def get_daily_stats(self, date_iso: str) -> dict[str, int]:
+        """Return today's counts: total items, fetched-today, scored-high-today, notified-today."""
+        conn = self.connection()
+        total = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        fetched = conn.execute(
+            "SELECT COUNT(*) FROM items WHERE DATE(fetched_at) = ?", (date_iso,)
+        ).fetchone()[0]
+        scored_high = conn.execute(
+            "SELECT COUNT(*) FROM items WHERE DATE(scored_at) = ? AND importance >= 4",
+            (date_iso,),
+        ).fetchone()[0]
+        notified = conn.execute(
+            "SELECT COUNT(*) FROM items WHERE DATE(notified_at) = ?", (date_iso,)
+        ).fetchone()[0]
+        return {
+            "total": total,
+            "fetched_today": fetched,
+            "scored_high_today": scored_high,
+            "notified_today": notified,
+        }
