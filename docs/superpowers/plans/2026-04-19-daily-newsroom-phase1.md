@@ -3029,7 +3029,7 @@ git commit -m "feat(digester): fallback raw digest on Opus failure"
 - Modify: `src/newsroom/cli.py`
 - Create: `tests/test_cli.py`
 
-- [ ] **Step 1: Write CLI tests**
+- [x] **Step 1: Write CLI tests**
 
 Create `tests/test_cli.py`:
 
@@ -3076,7 +3076,7 @@ def test_cli_notify_test_command(tmp_path, monkeypatch) -> None:
     assert result.exit_code in (0, 1)
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_cli.py -v
@@ -3084,7 +3084,7 @@ uv run pytest tests/test_cli.py -v
 
 Expected: most fail (commands don't exist yet).
 
-- [ ] **Step 3: Implement full `src/newsroom/cli.py`**
+- [x] **Step 3: Implement full `src/newsroom/cli.py`**
 
 ```python
 """CLI entry point wiring all subcommands via typer."""
@@ -3282,7 +3282,7 @@ def status() -> None:
     print_status(state, console=console)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_cli.py -v
@@ -3298,7 +3298,7 @@ def status() -> None:
 
 and restore the real import after Task 15.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/newsroom/cli.py tests/test_cli.py
