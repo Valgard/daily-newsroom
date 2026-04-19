@@ -23,13 +23,15 @@ sources:
     enabled: true
 
   # Tier 1: Lab blogs
+  # Anthropic removed their public RSS (404 as of 2026-04); no replacement found.
+  # Re-enable if they publish one again; check https://www.anthropic.com/news periodically.
   - name: anthropic-news
     category: ai
     subcategory: lab
     url: https://www.anthropic.com/news/rss.xml
     feed_type: rss
     interval_seconds: 3600
-    enabled: true
+    enabled: false
   - name: openai-blog
     category: ai
     subcategory: lab
@@ -40,17 +42,19 @@ sources:
   - name: deepmind-blog
     category: ai
     subcategory: lab
-    url: https://deepmind.google/discover/blog/rss.xml
+    url: https://deepmind.google/blog/rss.xml
     feed_type: rss
     interval_seconds: 3600
     enabled: true
+  # Meta AI blog has no RSS; ai.meta.com/* returns 400 for feed paths.
+  # about.fb.com/feed/ works but mixes non-AI content.
   - name: meta-ai-blog
     category: ai
     subcategory: lab
     url: https://ai.meta.com/blog/rss/
     feed_type: rss
     interval_seconds: 7200
-    enabled: true
+    enabled: false
   - name: huggingface-blog
     category: ai
     subcategory: lab
@@ -88,13 +92,15 @@ sources:
     feed_type: rss
     interval_seconds: 21600
     enabled: true
+  # The Batch is a newsletter-first product; deeplearning.ai/the-batch/feed/ returns 404.
+  # info.deeplearning.ai/rss.xml and beehiiv mirrors also 404. Disabled until alternative feed found.
   - name: the-batch
     category: ai
     subcategory: curated
     url: https://www.deeplearning.ai/the-batch/feed/
     feed_type: rss
     interval_seconds: 43200
-    enabled: true
+    enabled: false
 
   # Tier 3: Community
   - name: hackernews-ai
