@@ -209,3 +209,135 @@ class State:
             "UPDATE sources SET disabled_until = ? WHERE name = ?",
             (until.isoformat(), name),
         )
+
+    # ── Items ──────────────────────────────────────────────────────────
+
+    def insert_item(
+        self,
+        *,
+        source_id: int,
+        item_hash: str,
+        url: str,
+        title: str,
+        author: str | None,
+        published_at: str | None,
+        raw_summary: str | None,
+        category: str,
+    ) -> bool:
+        """Insert item. Returns True if inserted, False if duplicate hash."""
+        conn = self.connection()
+        cur = conn.execute(
+            """INSERT INTO items
+                (source_id, item_hash, url, title, author, published_at, raw_summary, category)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(item_hash) DO NOTHING""",
+            (source_id, item_hash, url, title, author, published_at, raw_summary, category),
+        )
+        return cur.rowcount > 0
+
+    def list_items_by_status(self, status: str, limit: int = 100) -> list[sqlite3.Row]:
+        conn = self.connection()
+        sql = (
+            "SELECT items.*, sources.name AS source_name,"
+            " sources.subcategory AS source_subcategory"
+            " FROM items JOIN sources ON items.source_id = sources.id"
+            " WHERE items.status = ? ORDER BY items.fetched_at ASC LIMIT ?"
+        )
+        return list(conn.execute(sql, (status, limit)).fetchall())
+
+    def list_items_for_digest(self, since_iso: str) -> list[sqlite3.Row]:
+        conn = self.connection()
+        sql = (
+            "SELECT items.*, sources.name AS source_name,"
+            " sources.subcategory AS source_subcategory"
+            " FROM items JOIN sources ON items.source_id = sources.id"
+            " WHERE items.status = 'scored' AND items.included_in_digest IS NULL"
+            "  AND items.scored_at >= ?"
+            " ORDER BY items.importance DESC, items.published_at DESC"
+        )
+        return list(conn.execute(sql, (since_iso,)).fetchall())
+
+    def mark_item_scored(
+        self,
+        *,
+        item_id: int,
+        importance: int,
+        reason: str,
+        model: str,
+    ) -> None:
+        conn = self.connection()
+        conn.execute(
+            """UPDATE items SET
+                status = 'scored', importance = ?, score_reason = ?,
+                score_model = ?, scored_at = datetime('now')
+             WHERE id = ?""",
+            (importance, reason, model, item_id),
+        )
+
+    def mark_item_arxiv_filter(self, *, item_id: int, relevant: bool) -> None:
+        new_status = "filtered_in" if relevant else "filtered_out"
+        conn = self.connection()
+        conn.execute(
+            "UPDATE items SET status = ?, arxiv_relevant = ? WHERE id = ?",
+            (new_status, int(relevant), item_id),
+        )
+
+    def mark_item_notified(self, *, item_id: int) -> None:
+        conn = self.connection()
+        conn.execute(
+            "UPDATE items SET notified_at = datetime('now') WHERE id = ?",
+            (item_id,),
+        )
+
+    def mark_item_digested(self, *, item_id: int, digest_label: str) -> None:
+        conn = self.connection()
+        conn.execute(
+            "UPDATE items SET included_in_digest = ? WHERE id = ?",
+            (digest_label, item_id),
+        )
+
+    def count_recent_notifications_by_category(
+        self,
+        category: str,
+        within_minutes: int,
+    ) -> int:
+        conn = self.connection()
+        return conn.execute(
+            "SELECT COUNT(*) FROM items "
+            "WHERE category = ? AND notified_at IS NOT NULL "
+            "  AND notified_at >= datetime('now', ?)",
+            (category, f"-{within_minutes} minutes"),
+        ).fetchone()[0]
+
+    # ── Digests ────────────────────────────────────────────────────────
+
+    def insert_digest(
+        self,
+        *,
+        date: str,
+        slot: str,
+        file_path: str,
+        item_count: int,
+        model: str,
+    ) -> None:
+        conn = self.connection()
+        conn.execute(
+            "INSERT INTO digests (date, slot, file_path, item_count, model) VALUES (?, ?, ?, ?, ?)",
+            (date, slot, file_path, item_count, model),
+        )
+
+    def get_digest(self, date: str, slot: str) -> sqlite3.Row | None:
+        conn = self.connection()
+        return conn.execute(
+            "SELECT * FROM digests WHERE date = ? AND slot = ?",
+            (date, slot),
+        ).fetchone()
+
+    def get_last_digest_generated_at(self, slot: str) -> str | None:
+        """Return ISO timestamp of most recent generation of given slot, or None."""
+        conn = self.connection()
+        row = conn.execute(
+            "SELECT MAX(generated_at) FROM digests WHERE slot = ?",
+            (slot,),
+        ).fetchone()
+        return row[0] if row else None

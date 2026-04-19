@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -93,3 +94,106 @@ def test_reset_source_errors_on_success(state: State) -> None:
     row = state.get_source_by_name("arxiv-cs-cl")
     assert row["consecutive_errors"] == 0
     assert row["last_error"] is None
+
+
+def _item_hash(url: str, title: str) -> str:
+    return hashlib.sha256(f"{url}\n{title}".encode()).hexdigest()[:16]
+
+
+def _sample_item_kwargs(source_id: int, title: str = "Test title") -> dict:
+    return {
+        "source_id": source_id,
+        "item_hash": _item_hash("https://example.com/a", title),
+        "url": "https://example.com/a",
+        "title": title,
+        "author": "Author A",
+        "published_at": "2026-04-19T10:00:00Z",
+        "raw_summary": "Summary of A",
+        "category": "ai",
+    }
+
+
+def test_insert_item_returns_inserted_flag(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    kwargs = _sample_item_kwargs(src["id"])
+    first = state.insert_item(**kwargs)
+    second = state.insert_item(**kwargs)  # same hash
+    assert first is True
+    assert second is False
+
+
+def test_insert_item_different_title_different_hash(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="A"))
+    state.insert_item(**_sample_item_kwargs(src["id"], title="B"))
+    rows = state.connection().execute("SELECT COUNT(*) FROM items").fetchone()
+    assert rows[0] == 2
+
+
+def test_list_items_by_status(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T2"))
+    news = state.list_items_by_status("new", limit=100)
+    assert len(news) == 2
+
+
+def test_mark_item_scored(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    item = state.list_items_by_status("new", limit=1)[0]
+    state.mark_item_scored(
+        item_id=item["id"], importance=4, reason="releases new feature", model="claude-haiku-4-5"
+    )
+    row = state.connection().execute("SELECT * FROM items WHERE id = ?", (item["id"],)).fetchone()
+    assert row["status"] == "scored"
+    assert row["importance"] == 4
+    assert row["score_reason"] == "releases new feature"
+
+
+def test_mark_item_filtered_out(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    item = state.list_items_by_status("new", limit=1)[0]
+    state.mark_item_arxiv_filter(item_id=item["id"], relevant=False)
+    row = state.connection().execute("SELECT * FROM items WHERE id = ?", (item["id"],)).fetchone()
+    assert row["status"] == "filtered_out"
+    assert row["arxiv_relevant"] == 0
+
+
+def test_mark_item_notified(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    item = state.list_items_by_status("new", limit=1)[0]
+    state.mark_item_notified(item_id=item["id"])
+    row = state.connection().execute("SELECT * FROM items WHERE id = ?", (item["id"],)).fetchone()
+    assert row["notified_at"] is not None
+
+
+def test_digests_insert_unique_per_slot(state: State) -> None:
+    state.insert_digest(
+        date="2026-04-19", slot="morning", file_path="/tmp/m.md", item_count=20, model="opus"
+    )
+    with pytest.raises(Exception):
+        state.insert_digest(
+            date="2026-04-19", slot="morning", file_path="/tmp/m2.md", item_count=21, model="opus"
+        )
+
+
+def test_get_digest_returns_existing(state: State) -> None:
+    state.insert_digest(
+        date="2026-04-19", slot="morning", file_path="/tmp/m.md", item_count=20, model="opus"
+    )
+    row = state.get_digest("2026-04-19", "morning")
+    assert row is not None
+    assert row["item_count"] == 20
+
+
+def test_get_digest_returns_none_for_missing(state: State) -> None:
+    assert state.get_digest("2026-04-19", "morning") is None
