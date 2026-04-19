@@ -1,0 +1,122 @@
+sources:
+  # Tier 1: arXiv (daily)
+  - name: arxiv-cs-cl
+    category: ai
+    subcategory: arxiv
+    url: https://arxiv.org/rss/cs.CL
+    feed_type: rss
+    interval_seconds: 86400
+    enabled: true
+  - name: arxiv-cs-lg
+    category: ai
+    subcategory: arxiv
+    url: https://arxiv.org/rss/cs.LG
+    feed_type: rss
+    interval_seconds: 86400
+    enabled: true
+  - name: arxiv-cs-ai
+    category: ai
+    subcategory: arxiv
+    url: https://arxiv.org/rss/cs.AI
+    feed_type: rss
+    interval_seconds: 86400
+    enabled: true
+
+  # Tier 1: Lab blogs
+  - name: anthropic-news
+    category: ai
+    subcategory: lab
+    url: https://www.anthropic.com/news/rss.xml
+    feed_type: rss
+    interval_seconds: 3600
+    enabled: true
+  - name: openai-blog
+    category: ai
+    subcategory: lab
+    url: https://openai.com/news/rss.xml
+    feed_type: rss
+    interval_seconds: 3600
+    enabled: true
+  - name: deepmind-blog
+    category: ai
+    subcategory: lab
+    url: https://deepmind.google/discover/blog/rss.xml
+    feed_type: rss
+    interval_seconds: 3600
+    enabled: true
+  - name: meta-ai-blog
+    category: ai
+    subcategory: lab
+    url: https://ai.meta.com/blog/rss/
+    feed_type: rss
+    interval_seconds: 7200
+    enabled: true
+  - name: huggingface-blog
+    category: ai
+    subcategory: lab
+    url: https://huggingface.co/blog/feed.xml
+    feed_type: rss
+    interval_seconds: 7200
+    enabled: true
+
+  # Tier 2: Curated
+  - name: simon-willison
+    category: ai
+    subcategory: curated
+    url: https://simonwillison.net/atom/everything/
+    feed_type: atom
+    interval_seconds: 3600
+    enabled: true
+  - name: sebastian-raschka
+    category: ai
+    subcategory: curated
+    url: https://magazine.sebastianraschka.com/feed
+    feed_type: rss
+    interval_seconds: 21600
+    enabled: true
+  - name: import-ai
+    category: ai
+    subcategory: curated
+    url: https://importai.substack.com/feed
+    feed_type: rss
+    interval_seconds: 21600
+    enabled: true
+  - name: latent-space
+    category: ai
+    subcategory: curated
+    url: https://www.latent.space/feed
+    feed_type: rss
+    interval_seconds: 21600
+    enabled: true
+  - name: the-batch
+    category: ai
+    subcategory: curated
+    url: https://www.deeplearning.ai/the-batch/feed/
+    feed_type: rss
+    interval_seconds: 43200
+    enabled: true
+
+  # Tier 3: Community
+  - name: hackernews-ai
+    category: ai
+    subcategory: community
+    url: http://hn.algolia.com/api/v1/search_by_date?query=AI+OR+LLM+OR+Claude&tags=story&numericFilters=points>100
+    feed_type: json
+    interval_seconds: 1800
+    enabled: true
+  - name: reddit-localllama
+    category: ai
+    subcategory: community
+    url: https://www.reddit.com/r/LocalLLaMA/.rss
+    feed_type: rss
+    interval_seconds: 7200
+    enabled: true
+
+  # Claude Code
+  - name: claude-code-releases
+    category: ai
+    subcategory: claude-code
+    url: https://api.github.com/repos/anthropics/claude-code/releases
+    feed_type: json
+    interval_seconds: 43200
+    enabled: true

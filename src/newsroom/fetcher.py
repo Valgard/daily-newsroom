@@ -143,13 +143,21 @@ def _parse_feedparser(raw: bytes) -> list[ParsedItem]:
 
 
 def _parse_json_hn(raw: bytes) -> list[ParsedItem]:
+    """Dispatch JSON feeds by shape: Algolia dict-with-hits vs GitHub releases list."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return []
-    hits = data.get("hits", [])
+    if isinstance(data, dict) and "hits" in data:
+        return _parse_json_hn_algolia(data)
+    if isinstance(data, list):
+        return _parse_json_github_releases(data)
+    return []
+
+
+def _parse_json_hn_algolia(data: dict) -> list[ParsedItem]:
     items: list[ParsedItem] = []
-    for hit in hits:
+    for hit in data.get("hits", []):
         url = hit.get("url")
         title = hit.get("title")
         if not url or not title:
@@ -161,6 +169,25 @@ def _parse_json_hn(raw: bytes) -> list[ParsedItem]:
                 author=hit.get("author"),
                 published_at=_normalize_date(hit.get("created_at")),
                 raw_summary=f"HN points: {hit.get('points', 0)}",
+            )
+        )
+    return items
+
+
+def _parse_json_github_releases(releases: list) -> list[ParsedItem]:
+    items: list[ParsedItem] = []
+    for rel in releases:
+        url = rel.get("html_url")
+        title = rel.get("name") or rel.get("tag_name")
+        if not url or not title:
+            continue
+        items.append(
+            ParsedItem(
+                url=url,
+                title=title,
+                author=(rel.get("author") or {}).get("login"),
+                published_at=_normalize_date(rel.get("published_at")),
+                raw_summary=(rel.get("body") or "")[:500],
             )
         )
     return items

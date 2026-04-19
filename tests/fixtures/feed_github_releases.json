@@ -1,0 +1,20 @@
+[
+  {
+    "url": "https://api.github.com/repos/anthropics/claude-code/releases/1",
+    "html_url": "https://github.com/anthropics/claude-code/releases/tag/v1.2.3",
+    "name": "Release 1.2.3",
+    "tag_name": "v1.2.3",
+    "author": {"login": "octocat"},
+    "published_at": "2026-04-19T10:00:00Z",
+    "body": "Initial release with new features."
+  },
+  {
+    "url": "https://api.github.com/repos/anthropics/claude-code/releases/2",
+    "html_url": "https://github.com/anthropics/claude-code/releases/tag/v1.2.4",
+    "name": null,
+    "tag_name": "v1.2.4",
+    "author": null,
+    "published_at": "2026-04-18T12:00:00Z",
+    "body": null
+  }
+]

@@ -219,3 +219,18 @@ async def test_fetch_due_sources_handles_network_error(state: State, httpx_mock:
     assert results[0].error is not None
     row = state.get_source_by_name("s")
     assert row["consecutive_errors"] == 1
+
+
+def test_parse_json_github_releases(fixtures_dir: Path) -> None:
+    raw = (fixtures_dir / "feed_github_releases.json").read_bytes()
+    items = parse_feed(raw, feed_type="json")
+    assert len(items) == 2
+    first = items[0]
+    assert first.title == "Release 1.2.3"
+    assert first.url == "https://github.com/anthropics/claude-code/releases/tag/v1.2.3"
+    assert first.author == "octocat"
+    assert first.published_at == "2026-04-19T10:00:00+00:00"
+    # Second item: name is None → falls back to tag_name; author dict is None → None
+    second = items[1]
+    assert second.title == "v1.2.4"
+    assert second.author is None
