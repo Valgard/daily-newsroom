@@ -32,6 +32,10 @@ def render_prompt(path: Path, variables: dict[str, Any]) -> str:
 
     Uses a simple Jinja-like syntax but without full Jinja to avoid the dependency.
     Missing variable → KeyError.
+
+    Variable names must match ``\\w+`` (alphanumeric + underscore). Dotted
+    or hyphenated tokens like ``{{ item.title }}`` or ``{{ source-name }}`` pass
+    through unchanged (they do not match the regex). Use a flat dict key.
     """
     template = path.read_text()
 
