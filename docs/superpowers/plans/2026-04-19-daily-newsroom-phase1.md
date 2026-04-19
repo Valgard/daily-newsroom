@@ -2044,7 +2044,7 @@ git commit -m "feat(filter-arxiv): haiku-based relevance filter for arxiv papers
 - Create: `tests/test_scorer.py`
 - Create: `config/prompts/score_item.md`
 
-- [ ] **Step 1: Write the prompt**
+- [x] **Step 1: Write the prompt**
 
 Create `config/prompts/score_item.md`:
 
@@ -2073,7 +2073,7 @@ Respond with a JSON object:
 Be calibrated — reserve 5 for truly major events. Most items should be 2–3.
 ```
 
-- [ ] **Step 2: Write failing tests**
+- [x] **Step 2: Write failing tests**
 
 Create `tests/test_scorer.py`:
 
@@ -2144,7 +2144,7 @@ async def test_scorer_leaves_item_on_parse_error(state_with_items: State) -> Non
     assert len(remaining) == 3  # none scored
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_scorer.py -v
@@ -2152,7 +2152,7 @@ uv run pytest tests/test_scorer.py -v
 
 Expected: `ModuleNotFoundError: No module named 'newsroom.scorer'`
 
-- [ ] **Step 4: Implement `src/newsroom/scorer.py`**
+- [x] **Step 4: Implement `src/newsroom/scorer.py`**
 
 ```python
 """Score items for importance via Haiku, trigger notifications for high-importance."""
@@ -2227,7 +2227,7 @@ async def score_pending_items(
     return scored
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_scorer.py -v
@@ -2235,7 +2235,7 @@ uv run pytest tests/test_scorer.py -v
 
 Expected: all 3 tests PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/newsroom/scorer.py tests/test_scorer.py config/prompts/score_item.md
