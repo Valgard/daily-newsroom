@@ -10,6 +10,15 @@ from newsroom.config import Source
 
 DEFAULT_DB_PATH = Path.home() / "Library" / "Application Support" / "daily-newsroom" / "state.db"
 
+# Digest filter: reject items whose known publication date is older than this.
+# Independent of the digest-cycle cutoff — this guards against sitemap-scrape
+# backfill surfacing old URLs as "today's news".
+DIGEST_MAX_ITEM_AGE_DAYS = 7
+
+# Digest filter: items below this importance are routine noise, kept in the
+# archive but not shown in the newsletter digest.
+DIGEST_MIN_IMPORTANCE = 3
+
 
 MIGRATIONS: dict[int, list[str]] = {
     1: [
@@ -311,25 +320,29 @@ class State:
 
         Filters:
         - status='scored' AND not already in another digest
-        - scored_at >= cutoff
-        - importance >= 3 (level 2 is routine noise)
-        - published_at >= cutoff OR NULL (sitemap-scrape may surface historical
-          URLs — those have old published_at and must not appear in today's
-          digest; items with unknown published_at still pass, trusting
-          scored_at as discovery signal)
+        - scored_at >= digest-cycle cutoff (`since_iso`)
+        - importance >= DIGEST_MIN_IMPORTANCE (default 3; level 2 is routine)
+        - published_at >= NOW − DIGEST_MAX_ITEM_AGE_DAYS OR NULL
+          (separate age-grenze, independent of `since_iso` — prevents sitemap-
+          scrape backfill from surfacing years-old URLs, while still letting
+          items published before the digest-cycle cutoff through as long as
+          they're within the age window.)
         """
         conn = self.connection()
+        age_cutoff_iso = (datetime.now(UTC) - timedelta(days=DIGEST_MAX_ITEM_AGE_DAYS)).isoformat()
         sql = (
             "SELECT items.*, sources.name AS source_name,"
             " sources.subcategory AS source_subcategory"
             " FROM items JOIN sources ON items.source_id = sources.id"
             " WHERE items.status = 'scored' AND items.included_in_digest IS NULL"
             "  AND items.scored_at >= ?"
-            "  AND items.importance >= 3"
+            "  AND items.importance >= ?"
             "  AND (items.published_at IS NULL OR items.published_at >= ?)"
             " ORDER BY items.importance DESC, items.published_at DESC"
         )
-        return list(conn.execute(sql, (since_iso, since_iso)).fetchall())
+        return list(
+            conn.execute(sql, (since_iso, DIGEST_MIN_IMPORTANCE, age_cutoff_iso)).fetchall()
+        )
 
     def mark_item_scored(
         self,
@@ -339,13 +352,19 @@ class State:
         reason: str,
         model: str,
     ) -> None:
+        """Transition an item to status='scored' + stamp scored_at.
+
+        Uses Python's datetime (ISO-8601 with 'T' separator) so comparisons
+        against other ISO strings — e.g. digest cutoffs — are lexically
+        consistent, and so freezegun can control the clock in tests.
+        """
         conn = self.connection()
         conn.execute(
             """UPDATE items SET
                 status = 'scored', importance = ?, score_reason = ?,
-                score_model = ?, scored_at = datetime('now')
+                score_model = ?, scored_at = ?
              WHERE id = ?""",
-            (importance, reason, model, item_id),
+            (importance, reason, model, datetime.now(UTC).isoformat(), item_id),
         )
 
     def mark_item_arxiv_filter(self, *, item_id: int, relevant: bool) -> None:

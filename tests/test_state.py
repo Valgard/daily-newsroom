@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from freezegun import freeze_time
 
 from newsroom.config import Source
 from newsroom.state import State
@@ -316,37 +317,81 @@ def test_list_items_for_digest_excludes_low_importance(state: State) -> None:
     assert titles == {"High", "Mid"}
 
 
-def test_list_items_for_digest_excludes_old_published_at(state: State) -> None:
-    """Historical sitemap-scrape items must not land in today's digest."""
+@freeze_time("2026-04-19 22:30:00")
+def test_list_items_for_digest_excludes_items_older_than_7_days(state: State) -> None:
+    """Historical sitemap-scrape items (published years ago) must not appear."""
     state.upsert_source(_sample_source())
     src = state.get_source_by_name("arxiv-cs-cl")
     state.insert_item(
         source_id=src["id"],
-        item_hash="h-old",
+        item_hash="h-ancient",
         url="https://e.com/old",
-        title="Old article",
+        title="Ancient article",
         author=None,
-        published_at="2023-08-15T10:00:00+00:00",
+        published_at="2023-08-15T10:00:00+00:00",  # years old
         raw_summary="body",
         category="ai",
     )
     state.insert_item(
         source_id=src["id"],
-        item_hash="h-new",
-        url="https://e.com/new",
-        title="New article",
+        item_hash="h-8d",
+        url="https://e.com/eightdays",
+        title="8-day-old article",
         author=None,
-        published_at="2026-04-19T10:00:00+00:00",
+        published_at="2026-04-11T10:00:00+00:00",  # 8 days ago
         raw_summary="body",
         category="ai",
     )
-    for title in ("Old article", "New article"):
+    state.insert_item(
+        source_id=src["id"],
+        item_hash="h-3d",
+        url="https://e.com/3d",
+        title="3-day-old article",
+        author=None,
+        published_at="2026-04-16T10:00:00+00:00",  # 3 days ago → within 7-day window
+        raw_summary="body",
+        category="ai",
+    )
+    for title in ("Ancient article", "8-day-old article", "3-day-old article"):
         item = next(i for i in state.list_items_by_status("new", limit=10) if i["title"] == title)
         state.mark_item_scored(item_id=item["id"], importance=4, reason="r", model="h")
 
     got = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
     titles = {r["title"] for r in got}
-    assert titles == {"New article"}
+    # Only within-7-day items pass; ancient + 8-day out
+    assert titles == {"3-day-old article"}
+
+
+@freeze_time("2026-04-20 07:00:00")
+def test_list_items_for_digest_includes_item_published_before_digest_cutoff(
+    state: State,
+) -> None:
+    """The cutoff-loophole fix: item published before digest cutoff but scored after.
+
+    Scenario: article published yesterday 14:30, scored today 06:45 (evening-digest
+    at 22:30 missed it because still 'new' then). Today's morning-digest has
+    cutoff=22:30 yesterday. Previous implementation excluded this item because
+    published_at (14:30 yesterday) < cutoff (22:30 yesterday). Fixed: published_at
+    just needs to be within 7 days of now, not >= digest cutoff.
+    """
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(
+        source_id=src["id"],
+        item_hash="h-pre-cutoff",
+        url="https://e.com/x",
+        title="Published yesterday afternoon",
+        author=None,
+        published_at="2026-04-19T14:30:00+00:00",
+        raw_summary="body",
+        category="ai",
+    )
+    item = state.list_items_by_status("new", limit=10)[0]
+    state.mark_item_scored(item_id=item["id"], importance=4, reason="r", model="h")
+    # Morning-digest cutoff: last evening-generated_at = 2026-04-19T22:30 (yesterday)
+    got = state.list_items_for_digest(since_iso="2026-04-19T22:30:00")
+    titles = {r["title"] for r in got}
+    assert titles == {"Published yesterday afternoon"}
 
 
 def test_list_items_for_digest_includes_items_without_published_at(state: State) -> None:
