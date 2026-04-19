@@ -3315,7 +3315,7 @@ git commit -m "feat(cli): wire subcommands with typer"
 - Create: `src/newsroom/status.py`
 - Modify: `src/newsroom/cli.py` (restore real `status` import)
 
-- [ ] **Step 1: Implement `src/newsroom/status.py`**
+- [x] **Step 1: Implement `src/newsroom/status.py`**
 
 ```python
 """Status command: overview of auth, DB, sources, recent activity."""
@@ -3405,7 +3405,7 @@ def _read_keychain_oauth() -> dict | None:
         return None
 ```
 
-- [ ] **Step 2: Test manually**
+- [x] **Step 2: Test manually**
 
 ```bash
 uv run python -m newsroom init
@@ -3414,7 +3414,7 @@ uv run python -m newsroom status
 
 Expected: panel with auth status, DB info, sources table.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/newsroom/status.py src/newsroom/cli.py
