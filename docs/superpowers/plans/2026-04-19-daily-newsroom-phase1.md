@@ -3431,7 +3431,7 @@ git commit -m "feat(cli): status command with rich tables"
 - Create: `src/newsroom/logging_setup.py`
 - Modify: `src/newsroom/cli.py` (call `configure_logging` at entry)
 
-- [ ] **Step 1: Implement `src/newsroom/logging_setup.py`**
+- [x] **Step 1: Implement `src/newsroom/logging_setup.py`**
 
 ```python
 """Logging configuration — Rich for stdout, JSONL for structured events."""
@@ -3487,7 +3487,7 @@ def configure_logging(verbose: bool = False) -> None:
     root.addHandler(jsonl_handler)
 ```
 
-- [ ] **Step 2: Call from CLI entry**
+- [x] **Step 2: Call from CLI entry**
 
 In `src/newsroom/cli.py`, add at top-level (not inside a command):
 
@@ -3499,7 +3499,7 @@ def _cli_entry(verbose: bool = typer.Option(False, "--verbose", "-v")) -> None:
     configure_logging(verbose=verbose)
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 ```bash
 uv run python -m newsroom init
@@ -3508,7 +3508,7 @@ ls ~/Library/Logs/newsroom/
 
 Expected: `events.jsonl` file exists.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/newsroom/logging_setup.py src/newsroom/cli.py
