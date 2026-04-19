@@ -1855,7 +1855,7 @@ git commit -m "feat(fetcher): orchestration loop with state updates"
 - Create: `tests/test_filter_arxiv.py`
 - Create: `config/prompts/filter_arxiv.md`
 
-- [ ] **Step 1: Write the prompt**
+- [x] **Step 1: Write the prompt**
 
 Create `config/prompts/filter_arxiv.md`:
 
@@ -1890,7 +1890,7 @@ You are filtering arXiv paper abstracts for relevance to a specific set of AI/ML
 Be conservative — when in doubt, mark `false`. We prefer to miss some relevant papers rather than flood the user with noise.
 ```
 
-- [ ] **Step 2: Write failing tests**
+- [x] **Step 2: Write failing tests**
 
 Create `tests/test_filter_arxiv.py`:
 
@@ -1965,7 +1965,7 @@ async def test_filter_only_processes_arxiv_subcategory(state_with_arxiv_item: St
     assert mock_client.ask.call_count == 1
 ```
 
-- [ ] **Step 3: Run tests to verify failure**
+- [x] **Step 3: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_filter_arxiv.py -v
@@ -1973,7 +1973,7 @@ uv run pytest tests/test_filter_arxiv.py -v
 
 Expected: `ModuleNotFoundError: No module named 'newsroom.filter_arxiv'`
 
-- [ ] **Step 4: Implement `src/newsroom/filter_arxiv.py`**
+- [x] **Step 4: Implement `src/newsroom/filter_arxiv.py`**
 
 ```python
 """Pre-scoring filter for arXiv items: Haiku decides relevance to user's themes."""
@@ -2018,7 +2018,7 @@ async def filter_pending_arxiv_items(state, agent: AgentClient | None = None) ->
     return processed
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_filter_arxiv.py -v
@@ -2026,7 +2026,7 @@ uv run pytest tests/test_filter_arxiv.py -v
 
 Expected: all 3 tests PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/newsroom/filter_arxiv.py tests/test_filter_arxiv.py config/prompts/filter_arxiv.md
