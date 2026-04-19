@@ -41,6 +41,27 @@ def test_load_sources_rejects_missing_file(tmp_path: Path) -> None:
         load_sources(tmp_path / "nope.yaml")
 
 
+def test_load_sources_accepts_sitemap_scrape_with_url_filter(tmp_path: Path) -> None:
+    """sitemap-scrape is a valid feed_type; url_filter is optional."""
+    yaml = tmp_path / "ok.yaml"
+    yaml.write_text(
+        "sources:\n"
+        "  - name: anthropic-news\n"
+        "    category: ai\n"
+        "    subcategory: lab\n"
+        "    url: https://www.anthropic.com/sitemap.xml\n"
+        "    feed_type: sitemap-scrape\n"
+        "    interval_seconds: 3600\n"
+        "    enabled: true\n"
+        "    url_filter: '^/news/[^/]+$'\n"
+    )
+    sources = load_sources(yaml)
+    assert len(sources) == 1
+    src = sources[0]
+    assert src.feed_type == "sitemap-scrape"
+    assert src.url_filter == r"^/news/[^/]+$"
+
+
 def test_load_sources_rejects_duplicate_names(tmp_path: Path) -> None:
     dupe = tmp_path / "dupe.yaml"
     dupe.write_text(

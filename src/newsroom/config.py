@@ -8,7 +8,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-FeedType = Literal["rss", "atom", "json", "html-scrape"]
+FeedType = Literal["rss", "atom", "json", "html-scrape", "sitemap-scrape"]
 
 
 class ConfigError(Exception):
@@ -25,6 +25,9 @@ class Source(BaseModel):
     feed_type: FeedType
     interval_seconds: int = Field(gt=0)
     enabled: bool = True
+    # Optional URL-path regex for sitemap-scrape (e.g. r"^/news/[^/]+$").
+    # Other feed_types ignore it.
+    url_filter: str | None = None
 
     @field_validator("name")
     @classmethod

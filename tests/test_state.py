@@ -38,6 +38,39 @@ def test_upsert_source_inserts_new(state: State) -> None:
     assert row["enabled"] == 1
 
 
+def test_upsert_source_persists_url_filter(state: State) -> None:
+    src = _sample_source().model_copy(
+        update={
+            "name": "anthropic-news",
+            "feed_type": "sitemap-scrape",
+            "url": "https://www.anthropic.com/sitemap.xml",
+            "url_filter": r"^/news/[^/]+$",
+        }
+    )
+    state.upsert_source(src)
+    row = state.get_source_by_name("anthropic-news")
+    assert row["feed_type"] == "sitemap-scrape"
+    assert row["url_filter"] == r"^/news/[^/]+$"
+
+
+def test_upsert_source_url_filter_defaults_to_null(state: State) -> None:
+    # RSS sources without url_filter should store NULL
+    state.upsert_source(_sample_source())
+    row = state.get_source_by_name("arxiv-cs-cl")
+    assert row["url_filter"] is None
+
+
+def test_ensure_schema_runs_migration_2(tmp_path: Path) -> None:
+    # Schema version after ensure_schema must be >= 2 once migration 2 is defined
+    s = State(tmp_path / "t.db")
+    s.ensure_schema()
+    version = s.connection().execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    assert version >= 2  # noqa: PLR2004
+    # url_filter column present on sources
+    cols = [r["name"] for r in s.connection().execute("PRAGMA table_info(sources)").fetchall()]
+    assert "url_filter" in cols
+
+
 def test_upsert_source_updates_existing(state: State) -> None:
     src = _sample_source()
     state.upsert_source(src)

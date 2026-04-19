@@ -69,6 +69,10 @@ MIGRATIONS: dict[int, list[str]] = {
             WHERE status = 'scored' AND included_in_digest IS NULL""",
         "CREATE INDEX idx_sources_enabled ON sources(enabled, last_checked_at) WHERE enabled = 1",
     ],
+    2: [
+        # Optional URL-filter regex used by sitemap-scrape feed_type.
+        "ALTER TABLE sources ADD COLUMN url_filter TEXT",
+    ],
 }
 
 
@@ -119,15 +123,16 @@ class State:
         conn = self.connection()
         conn.execute(
             """INSERT INTO sources
-                (name, category, subcategory, url, feed_type, interval_seconds, enabled)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+                (name, category, subcategory, url, feed_type, interval_seconds, enabled, url_filter)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(name) DO UPDATE SET
                 category = excluded.category,
                 subcategory = excluded.subcategory,
                 url = excluded.url,
                 feed_type = excluded.feed_type,
                 interval_seconds = excluded.interval_seconds,
-                enabled = excluded.enabled""",
+                enabled = excluded.enabled,
+                url_filter = excluded.url_filter""",
             (
                 src.name,
                 src.category,
@@ -136,6 +141,7 @@ class State:
                 src.feed_type,
                 src.interval_seconds,
                 int(src.enabled),
+                src.url_filter,
             ),
         )
 
