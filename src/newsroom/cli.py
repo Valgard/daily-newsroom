@@ -1,4 +1,5 @@
 """CLI entry point. Real subcommands added in Task 14."""
+
 import typer
 
 from newsroom import __version__
