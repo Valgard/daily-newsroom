@@ -1442,7 +1442,7 @@ git commit -m "feat(fetcher): should_fetch + conditional HTTP"
 - Create: `tests/fixtures/feed_atom_sample.xml`
 - Create: `tests/fixtures/feed_hn_algolia.json`
 
-- [ ] **Step 1: Create RSS fixture**
+- [x] **Step 1: Create RSS fixture**
 
 `tests/fixtures/feed_rss_sample.xml`:
 
@@ -1468,7 +1468,7 @@ git commit -m "feat(fetcher): should_fetch + conditional HTTP"
 </rss>
 ```
 
-- [ ] **Step 2: Create Atom fixture**
+- [x] **Step 2: Create Atom fixture**
 
 `tests/fixtures/feed_atom_sample.xml`:
 
@@ -1488,7 +1488,7 @@ git commit -m "feat(fetcher): should_fetch + conditional HTTP"
 </feed>
 ```
 
-- [ ] **Step 3: Create HN Algolia JSON fixture**
+- [x] **Step 3: Create HN Algolia JSON fixture**
 
 `tests/fixtures/feed_hn_algolia.json`:
 
@@ -1515,7 +1515,7 @@ git commit -m "feat(fetcher): should_fetch + conditional HTTP"
 }
 ```
 
-- [ ] **Step 4: Append parser tests to `tests/test_fetcher.py`**
+- [x] **Step 4: Append parser tests to `tests/test_fetcher.py`**
 
 ```python
 from newsroom.fetcher import ParsedItem, parse_feed
@@ -1561,7 +1561,7 @@ def test_parsed_item_has_stable_hash() -> None:
     assert len(item_a.item_hash) == 16
 ```
 
-- [ ] **Step 5: Append parsers to `src/newsroom/fetcher.py`**
+- [x] **Step 5: Append parsers to `src/newsroom/fetcher.py`**
 
 ```python
 import hashlib
@@ -1649,7 +1649,7 @@ def _normalize_date(raw: str | None) -> str | None:
         return None
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_fetcher.py -v
@@ -1657,7 +1657,7 @@ uv run pytest tests/test_fetcher.py -v
 
 Expected: all parser tests PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/newsroom/fetcher.py tests/test_fetcher.py tests/fixtures/feed_*.xml tests/fixtures/feed_*.json
