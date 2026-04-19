@@ -125,7 +125,7 @@ def _parse_feedparser(raw: bytes) -> list[ParsedItem]:
         if not url or not title:
             continue
         author = entry.get("author")
-        published = entry.get("published", entry.get("updated"))
+        published = entry.get("published") or entry.get("updated")
         summary = entry.get("summary")
         items.append(
             ParsedItem(
@@ -156,7 +156,7 @@ def _parse_json_hn(raw: bytes) -> list[ParsedItem]:
                 url=url,
                 title=title,
                 author=hit.get("author"),
-                published_at=hit.get("created_at"),
+                published_at=_normalize_date(hit.get("created_at")),
                 raw_summary=f"HN points: {hit.get('points', 0)}",
             )
         )
@@ -168,5 +168,5 @@ def _normalize_date(raw: str | None) -> str | None:
         return None
     try:
         return dateparser.parse(raw).isoformat()
-    except (ValueError, TypeError):
+    except (ValueError, OverflowError, TypeError):
         return None
