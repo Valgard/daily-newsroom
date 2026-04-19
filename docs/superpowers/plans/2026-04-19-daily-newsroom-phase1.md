@@ -2252,7 +2252,7 @@ git commit -m "feat(scorer): haiku importance scoring with notifier trigger"
 - Create: `src/newsroom/notifier.py`
 - Create: `tests/test_notifier.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_notifier.py`:
 
@@ -2382,7 +2382,7 @@ async def test_notifier_marks_item_notified(tmp_path: Path) -> None:
     assert updated["notified_at"] is not None
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_notifier.py -v
@@ -2390,7 +2390,7 @@ uv run pytest tests/test_notifier.py -v
 
 Expected: module not found.
 
-- [ ] **Step 3: Implement `src/newsroom/notifier.py`**
+- [x] **Step 3: Implement `src/newsroom/notifier.py`**
 
 ```python
 """macOS push notifications for high-importance items."""
@@ -2489,7 +2489,7 @@ class Notifier:
             logger.warning("notification send failed for item %s: %s", item["id"], e)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_notifier.py -v
@@ -2497,7 +2497,7 @@ uv run pytest tests/test_notifier.py -v
 
 Expected: all 7 tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/newsroom/notifier.py tests/test_notifier.py
