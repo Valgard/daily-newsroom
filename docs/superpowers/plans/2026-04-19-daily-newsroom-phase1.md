@@ -753,7 +753,7 @@ git commit -m "feat(state): sqlite schema, migrations, source CRUD"
 - Modify: `src/newsroom/state.py` (append methods)
 - Modify: `tests/test_state.py` (append tests)
 
-- [ ] **Step 1: Append tests to `tests/test_state.py`**
+- [x] **Step 1: Append tests to `tests/test_state.py`**
 
 ```python
 import hashlib
@@ -853,7 +853,7 @@ def test_get_digest_returns_none_for_missing(state: State) -> None:
     assert state.get_digest("2026-04-19", "morning") is None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 uv run pytest tests/test_state.py -v
@@ -861,7 +861,7 @@ uv run pytest tests/test_state.py -v
 
 Expected: new tests fail (`AttributeError: 'State' object has no attribute 'insert_item'`).
 
-- [ ] **Step 3: Append items & digests methods to `src/newsroom/state.py`**
+- [x] **Step 3: Append items & digests methods to `src/newsroom/state.py`**
 
 ```python
     # ── Items ──────────────────────────────────────────────────────────
@@ -983,7 +983,7 @@ Expected: new tests fail (`AttributeError: 'State' object has no attribute 'inse
         return row[0] if row else None
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_state.py -v
@@ -991,7 +991,7 @@ uv run pytest tests/test_state.py -v
 
 Expected: all tests PASS (now 16 total).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/newsroom/state.py tests/test_state.py
