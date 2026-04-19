@@ -1237,7 +1237,7 @@ git commit -m "feat(agent): claude-agent-sdk wrapper with prompt templating"
 - Create: `src/newsroom/fetcher.py`
 - Create: `tests/test_fetcher.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Create `tests/test_fetcher.py`:
 
@@ -1324,7 +1324,7 @@ async def test_fetch_one_raw_timeout_returns_error(httpx_mock: HTTPXMock) -> Non
     assert "timed out" in outcome.error.lower()
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 ```bash
 uv run pytest tests/test_fetcher.py -v
@@ -1332,7 +1332,7 @@ uv run pytest tests/test_fetcher.py -v
 
 Expected: `ModuleNotFoundError: No module named 'newsroom.fetcher'`
 
-- [ ] **Step 3: Implement `src/newsroom/fetcher.py` (part 1: should_fetch + fetch_one_raw)**
+- [x] **Step 3: Implement `src/newsroom/fetcher.py` (part 1: should_fetch + fetch_one_raw)**
 
 ```python
 """RSS/HTTP fetcher: conditional GET, feed parsing, item extraction."""
@@ -1414,7 +1414,7 @@ async def fetch_one_raw(source_row: dict[str, Any] | Any) -> FetchOutcome:
     )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_fetcher.py -v
@@ -1422,7 +1422,7 @@ uv run pytest tests/test_fetcher.py -v
 
 Expected: all 9 tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/newsroom/fetcher.py tests/test_fetcher.py
