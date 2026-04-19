@@ -113,7 +113,7 @@ class Notifier:
                 item["category"],
                 BUNDLING_WINDOW_MINUTES,
             )
-            state.mark_item_notified(item_id=item["id"])
+            state.mark_item_notified(item_id=item["id"], pushed=False)
             return
 
         prefix = TITLE_PREFIX.get(item["category"], item["category"].capitalize())

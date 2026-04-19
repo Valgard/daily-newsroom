@@ -73,6 +73,19 @@ MIGRATIONS: dict[int, list[str]] = {
         # Optional URL-filter regex used by sitemap-scrape feed_type.
         "ALTER TABLE sources ADD COLUMN url_filter TEXT",
     ],
+    3: [
+        # Distinguish actual pushes (push_sent=1) from bundling-suppressions /
+        # bulk backfill marks (push_sent=0). Fixes stats['notified_today'] and
+        # the bundling window counter.
+        "ALTER TABLE items ADD COLUMN push_sent INTEGER NOT NULL DEFAULT 0",
+        # Historical backfill: before this migration, bundling was not
+        # implemented, so any item with notified_at set was a real push iff
+        # it met the push threshold (importance >= 4). Items with
+        # notified_at set but importance NULL or < 4 are bulk-marks
+        # (e.g. our recent 2358-item SQL suppression) — they stay push_sent=0.
+        "UPDATE items SET push_sent = 1 "
+        "WHERE notified_at IS NOT NULL AND importance IS NOT NULL AND importance >= 4",
+    ],
 }
 
 
@@ -330,16 +343,23 @@ class State:
             (new_status, int(relevant), item_id),
         )
 
-    def mark_item_notified(self, *, item_id: int) -> None:
-        """Stamp notification time. Status remains 'scored' — notified_at is the record.
+    def mark_item_notified(self, *, item_id: int, pushed: bool = True) -> None:
+        """Stamp notification time + whether the user actually got a push.
+
+        `pushed=True` (default): a real macOS notification was sent.
+        `pushed=False`: the notifier deliberately suppressed the push
+        (e.g. bundling within 15 min, bulk backfill). The item is still
+        considered "handled" — the scorer won't retry and it still flows
+        through to the digest — but it doesn't count towards push stats
+        or the bundling window.
 
         Uses Python's datetime (respects freezegun/test clocks) rather than
         SQLite's datetime('now') so the bundling window is test-deterministic.
         """
         conn = self.connection()
         conn.execute(
-            "UPDATE items SET notified_at = ? WHERE id = ?",
-            (datetime.now(UTC).isoformat(), item_id),
+            "UPDATE items SET notified_at = ?, push_sent = ? WHERE id = ?",
+            (datetime.now(UTC).isoformat(), int(pushed), item_id),
         )
 
     def mark_item_digested(self, *, item_id: int, digest_label: str) -> None:
@@ -363,7 +383,7 @@ class State:
         conn = self.connection()
         return conn.execute(
             "SELECT COUNT(*) FROM items "
-            "WHERE category = ? AND notified_at IS NOT NULL "
+            "WHERE category = ? AND push_sent = 1 "
             "  AND notified_at >= ?",
             (category, cutoff_iso),
         ).fetchone()[0]
@@ -413,7 +433,8 @@ class State:
             (date_iso,),
         ).fetchone()[0]
         notified = conn.execute(
-            "SELECT COUNT(*) FROM items WHERE DATE(notified_at) = ?", (date_iso,)
+            "SELECT COUNT(*) FROM items WHERE DATE(notified_at) = ? AND push_sent = 1",
+            (date_iso,),
         ).fetchone()[0]
         return {
             "total": total,

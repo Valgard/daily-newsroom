@@ -200,6 +200,60 @@ def test_mark_item_notified(state: State) -> None:
     state.mark_item_notified(item_id=item["id"])
     row = state.connection().execute("SELECT * FROM items WHERE id = ?", (item["id"],)).fetchone()
     assert row["notified_at"] is not None
+    assert row["push_sent"] == 1  # default: a real push
+
+
+def test_mark_item_notified_suppressed(state: State) -> None:
+    """pushed=False stamps notified_at but marks push_sent=0 (bundling suppression)."""
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    item = state.list_items_by_status("new", limit=1)[0]
+    state.mark_item_notified(item_id=item["id"], pushed=False)
+    row = state.connection().execute("SELECT * FROM items WHERE id = ?", (item["id"],)).fetchone()
+    assert row["notified_at"] is not None
+    assert row["push_sent"] == 0
+
+
+def test_count_recent_notifications_ignores_suppressed(state: State) -> None:
+    """count_recent_notifications_by_category must ignore push-suppressed items."""
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    item = state.list_items_by_status("new", limit=1)[0]
+    # Suppressed notification — should NOT count towards recent-push bundling
+    state.mark_item_notified(item_id=item["id"], pushed=False)
+    assert state.count_recent_notifications_by_category("ai", within_minutes=15) == 0
+
+
+def test_daily_stats_notified_counts_only_real_pushes(state: State) -> None:
+    """get_daily_stats['notified_today'] counts push_sent=1 only."""
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="real"))
+    state.insert_item(
+        **{
+            **_sample_item_kwargs(src["id"], title="suppressed"),
+            "item_hash": "h-suppressed",
+            "url": "https://example.com/b",
+        }
+    )
+    items = state.list_items_by_status("new", limit=10)
+    state.mark_item_notified(item_id=items[0]["id"])  # real
+    state.mark_item_notified(item_id=items[1]["id"], pushed=False)  # suppressed
+
+    today = datetime.now(UTC).date().isoformat()
+    stats = state.get_daily_stats(today)
+    assert stats["notified_today"] == 1  # suppressed does not count
+
+
+def test_ensure_schema_runs_migration_3(tmp_path: Path) -> None:
+    s = State(tmp_path / "t.db")
+    s.ensure_schema()
+    version = s.connection().execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    assert version >= 3  # noqa: PLR2004
+    cols = [r["name"] for r in s.connection().execute("PRAGMA table_info(items)").fetchall()]
+    assert "push_sent" in cols
 
 
 def test_digests_insert_unique_per_slot(state: State) -> None:

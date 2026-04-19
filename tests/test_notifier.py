@@ -147,6 +147,8 @@ async def test_notifier_suppresses_second_push_within_15min(state: State) -> Non
     # But the second item IS marked as notified so the scorer doesn't retry it
     updated2 = state.get_item_with_source(item2_id)
     assert updated2["notified_at"] is not None
+    # And push_sent=0 — a suppression, not a real push (for stats + bundling counting)
+    assert updated2["push_sent"] == 0
 
 
 async def test_notifier_pushes_again_after_15min_window(state: State) -> None:
