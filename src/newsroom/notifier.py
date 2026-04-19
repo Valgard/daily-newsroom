@@ -30,7 +30,11 @@ def compute_threshold_for_hour(
     category: str | None = None,
     subcategory: str | None = None,
 ) -> int:
-    """Effective importance threshold for pushing a notification."""
+    """Effective importance threshold for pushing a notification.
+
+    `category` is reserved for Phase 2 per-category overrides (e.g.
+    weltgeschehen-breaking would lower the threshold); unused today.
+    """
     # arxiv sub-category: never single-push (only via digest)
     if subcategory == "arxiv":
         return THRESHOLD_NEVER
@@ -80,7 +84,7 @@ class Notifier:
     async def maybe_notify(self, item: Any, state: Any) -> None:
         """Decide whether to notify; if yes, send and mark."""
         # Already notified?
-        if item["notified_at"]:
+        if item["notified_at"] is not None:
             return
 
         now = datetime.now(BERLIN_TZ)
