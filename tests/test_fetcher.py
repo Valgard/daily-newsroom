@@ -6,7 +6,9 @@ import pytest
 from freezegun import freeze_time
 from pytest_httpx import HTTPXMock
 
-from newsroom.fetcher import ParsedItem, fetch_one_raw, parse_feed, should_fetch
+from newsroom.config import Source
+from newsroom.fetcher import ParsedItem, fetch_due_sources, fetch_one_raw, parse_feed, should_fetch
+from newsroom.state import State
 
 
 def _source_row(**overrides) -> dict:
@@ -148,3 +150,72 @@ def test_parsed_item_has_stable_hash() -> None:
     )
     assert item_a.item_hash == item_b.item_hash
     assert len(item_a.item_hash) == 16
+
+
+# ── Orchestration tests ────────────────────────────────────────────────────────
+
+
+def _insert_source_via_state(
+    state: State,
+    name: str = "s",
+    interval: int = 3600,
+    url: str = "https://e.com/rss",
+    feed_type: str = "rss",
+) -> None:
+    state.upsert_source(
+        Source(
+            name=name,
+            category="ai",
+            subcategory=None,
+            url=url,
+            feed_type=feed_type,
+            interval_seconds=interval,
+            enabled=True,
+        )
+    )
+
+
+async def test_fetch_due_sources_inserts_items(
+    state: State, httpx_mock: HTTPXMock, fixtures_dir: Path
+) -> None:
+    _insert_source_via_state(state)
+    httpx_mock.add_response(
+        url="https://e.com/rss",
+        content=(fixtures_dir / "feed_rss_sample.xml").read_bytes(),
+        headers={"ETag": 'W/"abc"'},
+    )
+    results = await fetch_due_sources(state)
+    assert len(results) == 1
+    assert results[0].items_inserted == 2
+    # Items in DB
+    new_items = state.list_items_by_status("new", limit=10)
+    assert len(new_items) == 2
+
+
+async def test_fetch_due_sources_skips_not_due(state: State, httpx_mock: HTTPXMock) -> None:
+    _insert_source_via_state(state)
+    # Simulate recent fetch
+    state.update_source_fetch_state(
+        name="s",
+        last_checked_at=datetime.now(UTC),
+        last_fetched_at=None,
+    )
+    results = await fetch_due_sources(state)
+    assert results == []
+
+
+async def test_fetch_due_sources_handles_304(state: State, httpx_mock: HTTPXMock) -> None:
+    _insert_source_via_state(state)
+    httpx_mock.add_response(url="https://e.com/rss", status_code=304)
+    results = await fetch_due_sources(state)
+    assert results[0].items_inserted == 0
+    assert results[0].status == 304
+
+
+async def test_fetch_due_sources_handles_network_error(state: State, httpx_mock: HTTPXMock) -> None:
+    _insert_source_via_state(state)
+    httpx_mock.add_exception(httpx.ConnectError("refused"))
+    results = await fetch_due_sources(state)
+    assert results[0].error is not None
+    row = state.get_source_by_name("s")
+    assert row["consecutive_errors"] == 1

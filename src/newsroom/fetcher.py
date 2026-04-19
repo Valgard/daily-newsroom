@@ -6,7 +6,10 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from newsroom.state import State
 
 import feedparser
 import httpx
@@ -170,3 +173,89 @@ def _normalize_date(raw: str | None) -> str | None:
         return dateparser.parse(raw).isoformat()
     except (ValueError, OverflowError, TypeError):
         return None
+
+
+@dataclass
+class FetchResult:
+    """Summary of one source's fetch attempt."""
+
+    source_name: str
+    status: int | None
+    items_inserted: int
+    error: str | None = None
+
+
+async def fetch_due_sources(
+    state: State,
+    *,
+    category: str | None = None,
+    source: str | None = None,
+) -> list[FetchResult]:
+    """Iterate all enabled sources, fetch due ones, insert items, update state.
+
+    `category` and `source` are optional debug filters — only matching sources are
+    considered. Production launchd invocations pass neither, so the full set runs.
+    """
+    from newsroom.state import State as _State  # noqa: PLC0415 (avoid circular dep)
+
+    assert isinstance(state, _State)
+
+    results: list[FetchResult] = []
+    sources = state.list_enabled_sources()
+    for src_row in sources:
+        if category is not None and src_row["category"] != category:
+            continue
+        if source is not None and src_row["name"] != source:
+            continue
+        if not should_fetch(src_row):
+            continue
+        result = await _fetch_and_ingest_one(src_row, state)
+        results.append(result)
+    return results
+
+
+async def _fetch_and_ingest_one(src_row: Any, state: State) -> FetchResult:
+    outcome = await fetch_one_raw(src_row)
+    name = src_row["name"]
+    now = datetime.now(UTC)
+
+    if outcome.error is not None:
+        state.increment_source_error(name, outcome.error)
+        return FetchResult(source_name=name, status=None, items_inserted=0, error=outcome.error)
+
+    if outcome.status == HTTP_NOT_MODIFIED:
+        state.update_source_fetch_state(name=name, last_checked_at=now)
+        state.reset_source_errors(name)
+        return FetchResult(source_name=name, status=HTTP_NOT_MODIFIED, items_inserted=0)
+
+    if outcome.status != HTTP_OK:
+        err = f"HTTP {outcome.status}"
+        state.increment_source_error(name, err)
+        return FetchResult(source_name=name, status=outcome.status, items_inserted=0, error=err)
+
+    # 200 OK: parse + insert
+    assert outcome.body is not None
+    parsed = parse_feed(outcome.body, feed_type=src_row["feed_type"])
+    inserted = 0
+    for item in parsed:
+        if state.insert_item(
+            source_id=src_row["id"],
+            item_hash=item.item_hash,
+            url=item.url,
+            title=item.title,
+            author=item.author,
+            published_at=item.published_at,
+            raw_summary=item.raw_summary,
+            category=src_row["category"],
+        ):
+            inserted += 1
+
+    state.update_source_fetch_state(
+        name=name,
+        last_checked_at=now,
+        last_fetched_at=now,
+        etag=outcome.etag,
+        last_modified=outcome.last_modified,
+    )
+    state.reset_source_errors(name)
+    return FetchResult(source_name=name, status=HTTP_OK, items_inserted=inserted)

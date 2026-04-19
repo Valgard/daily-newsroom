@@ -8,13 +8,6 @@ from newsroom.config import Source
 from newsroom.state import State
 
 
-@pytest.fixture
-def state(tmp_path: Path) -> State:
-    s = State(tmp_path / "test.db")
-    s.ensure_schema()
-    return s
-
-
 def _sample_source() -> Source:
     return Source(
         name="arxiv-cs-cl",
