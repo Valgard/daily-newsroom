@@ -3908,7 +3908,7 @@ git commit -m "feat: launchd plists + install/uninstall scripts"
 - Create: `README.md`
 - Create: `CLAUDE.md`
 
-- [ ] **Step 1: Write integration test**
+- [x] **Step 1: Write integration test**
 
 Create `tests/test_integration.py`:
 
@@ -3981,7 +3981,7 @@ async def test_end_to_end_pipeline(
     assert state.get_digest("2026-04-19", "morning") is not None
 ```
 
-- [ ] **Step 2: Run integration test**
+- [x] **Step 2: Run integration test**
 
 ```bash
 uv run pytest tests/test_integration.py -v
@@ -3989,7 +3989,7 @@ uv run pytest tests/test_integration.py -v
 
 Expected: PASS.
 
-- [ ] **Step 3: Write `README.md`**
+- [x] **Step 3: Write `README.md`**
 
 ```markdown
 # daily-newsroom
@@ -4087,7 +4087,7 @@ uv run vulture src/
 ```
 ```
 
-- [ ] **Step 4: Write `CLAUDE.md`**
+- [x] **Step 4: Write `CLAUDE.md`**
 
 ```markdown
 # daily-newsroom — Project Guidance for Claude
@@ -4152,7 +4152,7 @@ Full design: `docs/superpowers/specs/2026-04-19-daily-newsroom-design.md`.
 If any of these temptations arise, check the spec §10.3 Explicitly Never before writing code.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_integration.py README.md CLAUDE.md
@@ -4163,7 +4163,7 @@ git commit -m "docs: integration test + README + CLAUDE.md"
 
 ## Final Step: Run Full Test Suite + Manual Verification
 
-- [ ] **Run full tests**
+- [x] **Run full tests**
 
 ```bash
 uv run pytest -v
