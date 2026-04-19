@@ -34,22 +34,20 @@ def should_fetch(source_row: dict[str, Any] | Any) -> bool:
 
     disabled_until = source_row["disabled_until"] if "disabled_until" in _keys(source_row) else None
     now = datetime.now(UTC)
-    if disabled_until and datetime.fromisoformat(disabled_until) > now:
+    if disabled_until and datetime.fromisoformat(disabled_until).astimezone(UTC) > now:
         return False
 
     last_checked = source_row["last_checked_at"] if "last_checked_at" in _keys(source_row) else None
     if last_checked is None:
         return True
 
-    elapsed = (now - datetime.fromisoformat(last_checked)).total_seconds()
+    elapsed = (now - datetime.fromisoformat(last_checked).astimezone(UTC)).total_seconds()
     return elapsed >= source_row["interval_seconds"]
 
 
 def _keys(row: Any) -> list[str]:
-    """Get column names from sqlite3.Row or dict."""
-    if hasattr(row, "keys"):
-        return list(row.keys())
-    return list(row)
+    """Get column names from sqlite3.Row or dict (both support .keys())."""
+    return list(row.keys())
 
 
 async def fetch_one_raw(source_row: dict[str, Any] | Any) -> FetchOutcome:
