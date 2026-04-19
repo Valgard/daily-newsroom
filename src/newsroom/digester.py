@@ -138,12 +138,16 @@ async def generate_digest(
     items_md = format_items_for_prompt(items, summaries_dir=summaries_dir)
     date_de = date.strftime("%-d. %B %Y")  # "19. April 2026" on macOS/Linux
 
-    content = await agent.ask(
-        prompt_name=f"digest_{slot}",
-        variables={"items_markdown": items_md, "date_de": date_de},
-        model=DIGEST_MODEL,
-        parse="text",
-    )
+    try:
+        content = await agent.ask(
+            prompt_name=f"digest_{slot}",
+            variables={"items_markdown": items_md, "date_de": date_de},
+            model=DIGEST_MODEL,
+            parse="text",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Opus digest call failed, using fallback: %s", e)
+        content = _build_fallback_digest(items, slot=slot, date=date)
 
     _write_digest_file(target_file, content, slot=slot)
 
@@ -171,3 +175,36 @@ def _write_digest_file(path: Path, content: str, *, slot: str) -> None:
         separator = "\n\n---\n\n" if not existing.endswith("\n---\n\n") else ""
         body = content if content.endswith("\n") else content + "\n"
         path.write_text(existing + separator + body)
+
+
+def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: ANN001
+    """Emergency digest: no LLM synthesis, just a structured list."""
+    if slot == "morning":
+        header = (
+            f"# News-Digest {date.strftime('%d.%m.%Y')} ({slot.capitalize()})\n\n"
+            "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)\n\n"
+        )
+    else:
+        header = (
+            "\n\n---\n\n## Abend-Digest\n\n"
+            "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)\n\n"
+        )
+
+    groups: dict[str, list] = defaultdict(list)
+    for item in items:
+        groups[item["source_subcategory"] or "other"].append(item)
+
+    lines = [header]
+    for subcat in sorted(groups):
+        lines.append(f"## {subcat.capitalize()}\n")
+        for item in sorted(groups[subcat], key=lambda x: (-x["importance"], x["title"])):
+            lines.append(
+                f"- **[Importance {item['importance']}]** "
+                f"[{item['title']}]({item['url']}) · {item['source_name']}"
+            )
+        lines.append("")
+    lines.append(
+        "\n_Generiert ohne LLM-Synthese. Bei Bedarf Kommando "
+        "`newsroom digest --force` manuell erneut ausführen._\n"
+    )
+    return "\n".join(lines)

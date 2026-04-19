@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from freezegun import freeze_time
 
+from newsroom.agent_client import AgentError
 from newsroom.config import Source
 from newsroom.digester import (
     NoSlotError,
@@ -165,3 +166,21 @@ async def test_generate_digest_evening_appends(populated_state: State, tmp_path:
     body = (morning_dir / "2026-04-19.md").read_text()
     assert "# Morgen Content" in body
     assert "## Abend-Digest" in body
+
+
+async def test_generate_digest_falls_back_on_llm_error(
+    populated_state: State, tmp_path: Path
+) -> None:
+    mock_agent = AsyncMock()
+    mock_agent.ask.side_effect = AgentError("opus unavailable")
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    out = tmp_path / "news" / "2026" / "04" / "2026-04-19.md"
+    body = out.read_text()
+    assert "Automatisch generiert" in body  # fallback marker
+    assert "Title 0" in body  # items still listed
