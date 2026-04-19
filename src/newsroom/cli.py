@@ -187,12 +187,11 @@ def digest(
             return
     date = _date.fromisoformat(date_str) if date_str else _date.today()
     if dry_run:
-        from newsroom.digester import _cutoff_for_slot, format_items_for_prompt  # noqa: PLC0415
+        from newsroom.digester import _cutoff_for_slot  # noqa: PLC0415
 
         cutoff = _cutoff_for_slot(slot, state)
         items = state.list_items_for_digest(since_iso=cutoff)
         console.print(f"Would generate {slot} digest for {date} with {len(items)} items")
-        _ = format_items_for_prompt  # imported for completeness; not called in dry-run
         return
     path = asyncio.run(generate_digest(state=state, slot=slot, date=date, force=force))
     console.print(f"✓ Digest written: {path}")
