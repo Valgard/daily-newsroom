@@ -400,7 +400,7 @@ git commit -m "feat(config): pydantic source config loader"
 - Create: `src/newsroom/state.py`
 - Create: `tests/test_state.py`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/test_state.py`:
 
@@ -503,7 +503,7 @@ def test_reset_source_errors_on_success(state: State) -> None:
     assert row["last_error"] is None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 uv run pytest tests/test_state.py -v
@@ -511,7 +511,7 @@ uv run pytest tests/test_state.py -v
 
 Expected: `ModuleNotFoundError: No module named 'newsroom.state'`
 
-- [ ] **Step 3: Implement `src/newsroom/state.py` (part 1: connection + migrations + sources)**
+- [x] **Step 3: Implement `src/newsroom/state.py` (part 1: connection + migrations + sources)**
 
 ```python
 """SQLite state manager for newsroom."""
@@ -721,7 +721,7 @@ class State:
         )
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 uv run pytest tests/test_state.py -v
@@ -729,14 +729,14 @@ uv run pytest tests/test_state.py -v
 
 Expected: all 7 tests PASS.
 
-- [ ] **Step 5: Lint & format**
+- [x] **Step 5: Lint & format**
 
 ```bash
 uv run ruff check src/newsroom/state.py tests/test_state.py
 uv run ruff format src/newsroom/state.py tests/test_state.py
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/newsroom/state.py tests/test_state.py
