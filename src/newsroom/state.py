@@ -229,14 +229,14 @@ class State:
     def list_items_for_scoring(self, limit: int = 100) -> list[sqlite3.Row]:
         """Return items with status 'new' OR 'filtered_in', ready to be scored.
 
-        Joined with sources to expose `source_name`, since the scorer's prompt
-        includes the source identity.
+        Joined with sources to expose source_name + source_subcategory.
         """
         conn = self.connection()
         return list(
             conn.execute(
-                "SELECT items.*, sources.name AS source_name FROM items "
-                "JOIN sources ON items.source_id = sources.id "
+                "SELECT items.*, sources.name AS source_name, "
+                "sources.subcategory AS source_subcategory "
+                "FROM items JOIN sources ON items.source_id = sources.id "
                 "WHERE items.status IN ('new', 'filtered_in') "
                 "ORDER BY items.fetched_at ASC LIMIT ?",
                 (limit,),
@@ -244,10 +244,11 @@ class State:
         )
 
     def get_item_with_source(self, item_id: int) -> sqlite3.Row | None:
-        """Fetch a single item by id, joined with sources for `source_name`."""
+        """Fetch a single item by id, joined with sources for source_name + source_subcategory."""
         conn = self.connection()
         return conn.execute(
-            "SELECT items.*, sources.name AS source_name "
+            "SELECT items.*, sources.name AS source_name, "
+            "sources.subcategory AS source_subcategory "
             "FROM items JOIN sources ON items.source_id = sources.id "
             "WHERE items.id = ?",
             (item_id,),
