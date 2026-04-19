@@ -7,7 +7,13 @@ from freezegun import freeze_time
 from pytest_httpx import HTTPXMock
 
 from newsroom.config import Source
-from newsroom.fetcher import ParsedItem, fetch_due_sources, fetch_one_raw, parse_feed, should_fetch
+from newsroom.fetcher import (
+    ParsedItem,
+    fetch_due_sources,
+    fetch_one_raw,
+    parse_feed,
+    should_fetch,
+)
 from newsroom.state import State
 
 

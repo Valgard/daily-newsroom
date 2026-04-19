@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
+import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from newsroom.state import State
@@ -19,6 +24,12 @@ USER_AGENT = "daily-newsroom/0.1 (+https://github.com/none)"
 DEFAULT_TIMEOUT = 30.0
 HTTP_NOT_MODIFIED = 304
 HTTP_OK = 200
+
+SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+SITEMAP_VARIETY_THRESHOLD = 0.1
+SITEMAP_OG_CONCURRENCY = 5
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -286,3 +297,164 @@ async def _fetch_and_ingest_one(src_row: Any, state: State) -> FetchResult:
     )
     state.reset_source_errors(name)
     return FetchResult(source_name=name, status=HTTP_OK, items_inserted=inserted)
+
+
+# ── sitemap-scrape ───────────────────────────────────────────────────
+
+_OG_TITLE_RE = re.compile(r'<meta\s+property="og:title"\s+content="([^"]*)"', re.IGNORECASE)
+_OG_DESC_RE = re.compile(r'<meta\s+property="og:description"\s+content="([^"]*)"', re.IGNORECASE)
+_OG_PUBLISHED_RE = re.compile(
+    r'<meta\s+property="article:published_time"\s+content="([^"]*)"', re.IGNORECASE
+)
+
+
+def _deslugify(slug: str) -> str:
+    """Turn `first-article` into `First Article` for a last-ditch title."""
+    return " ".join(word.capitalize() for word in slug.split("-") if word)
+
+
+def _parse_sitemap_entries(raw: bytes) -> list[tuple[str, str | None]]:
+    """Return [(loc, lastmod), ...] from sitemap XML. Empty list on parse error."""
+    try:
+        root = ET.fromstring(raw)  # noqa: S314 — sitemap XML, not untrusted payload
+    except ET.ParseError:
+        return []
+    entries: list[tuple[str, str | None]] = []
+    for url_elem in root.findall("sm:url", SITEMAP_NS):
+        loc = url_elem.findtext("sm:loc", namespaces=SITEMAP_NS)
+        if not loc:
+            continue
+        lastmod = url_elem.findtext("sm:lastmod", namespaces=SITEMAP_NS)
+        entries.append((loc, lastmod))
+    return entries
+
+
+def _lastmods_are_trustworthy(entries: list[tuple[str, str | None]]) -> bool:
+    """Heuristic: reject stale sitemaps where all lastmods are the same site-build date.
+
+    Requires: (a) at least 2 distinct values and (b) ≥10% distinct-to-total ratio.
+    Large sitemaps with single-value lastmods (e.g. deeplearning.ai's 798 entries all
+    stamped with the daily build time) fail condition (a) regardless of size.
+    """
+    lastmods = [lm for _, lm in entries if lm]
+    if not lastmods:
+        return False
+    unique = len(set(lastmods))
+    if unique < 2:  # noqa: PLR2004
+        return False
+    return unique / len(lastmods) >= SITEMAP_VARIETY_THRESHOLD
+
+
+async def _fetch_og_metadata(url: str, client: httpx.AsyncClient) -> dict[str, str | None] | None:
+    """Fetch URL and extract og:title / og:description / article:published_time.
+
+    Returns None on non-200 response or network error — caller should skip the item.
+    """
+    try:
+        response = await client.get(url, timeout=15.0, follow_redirects=True)
+    except (
+        httpx.ConnectError,
+        httpx.ConnectTimeout,
+        httpx.ReadTimeout,
+        httpx.RemoteProtocolError,
+    ) as e:
+        logger.debug("og fetch failed for %s: %s", url, e)
+        return None
+    if response.status_code != HTTP_OK:
+        logger.debug("og fetch non-200 for %s: %s", url, response.status_code)
+        return None
+    html = response.text
+    return {
+        "title": _first_group(_OG_TITLE_RE, html),
+        "description": _first_group(_OG_DESC_RE, html),
+        "published_time": _first_group(_OG_PUBLISHED_RE, html),
+    }
+
+
+def _first_group(regex: re.Pattern[str], text: str) -> str | None:
+    m = regex.search(text)
+    return m.group(1) if m else None
+
+
+async def parse_sitemap_scrape(
+    raw: bytes,
+    *,
+    url_filter: str,
+    now: datetime,
+    http_client: httpx.AsyncClient | None = None,
+    max_concurrent: int = SITEMAP_OG_CONCURRENCY,
+) -> list[ParsedItem]:
+    """Parse a sitemap, filter URLs, scrape OpenGraph metadata per URL.
+
+    `published_at` fallback chain per item: trustworthy sitemap lastmod →
+    `article:published_time` from OG → `now`. Never returns None.
+
+    Items with a non-200 OG response are skipped (see _fetch_og_metadata).
+    Malformed XML yields [] (never raises).
+    """
+    entries = _parse_sitemap_entries(raw)
+    if not entries:
+        return []
+    path_re = re.compile(url_filter)
+    filtered = [(url, lm) for (url, lm) in entries if path_re.search(urlparse(url).path)]
+    if not filtered:
+        return []
+    trust_lastmod = _lastmods_are_trustworthy(filtered)
+    now_iso = now.isoformat()
+
+    if http_client is None:
+        async with httpx.AsyncClient(
+            timeout=15.0, follow_redirects=True, headers={"User-Agent": USER_AGENT}
+        ) as client:
+            og_results = await _gather_og(filtered, client, max_concurrent)
+    else:
+        og_results = await _gather_og(filtered, http_client, max_concurrent)
+
+    items: list[ParsedItem] = []
+    for (url, lastmod), og in zip(filtered, og_results, strict=True):
+        if og is None:
+            # OG fetch failed — skip item (will be retried on next fetch cycle)
+            continue
+        title = og.get("title") or _deslugify(urlparse(url).path.rstrip("/").rsplit("/", 1)[-1])
+        if not title:
+            continue
+        published = _choose_published_at(
+            lastmod=lastmod if trust_lastmod else None,
+            og_published=og.get("published_time"),
+            fallback=now_iso,
+        )
+        items.append(
+            ParsedItem(
+                url=url,
+                title=title,
+                author=None,
+                published_at=published,
+                raw_summary=og.get("description"),
+            )
+        )
+    return items
+
+
+def _choose_published_at(*, lastmod: str | None, og_published: str | None, fallback: str) -> str:
+    """Resolve the published_at fallback chain, normalizing to ISO-8601."""
+    for candidate in (lastmod, og_published):
+        if candidate:
+            normalized = _normalize_date(candidate)
+            if normalized:
+                return normalized
+    return fallback
+
+
+async def _gather_og(
+    entries: list[tuple[str, str | None]],
+    client: httpx.AsyncClient,
+    max_concurrent: int,
+) -> list[dict[str, str | None] | None]:
+    """Run _fetch_og_metadata concurrently with a semaphore."""
+    sem = asyncio.Semaphore(max_concurrent)
+
+    async def _one(url: str) -> dict[str, str | None] | None:
+        async with sem:
+            return await _fetch_og_metadata(url, client)
+
+    return await asyncio.gather(*(_one(url) for url, _ in entries))
