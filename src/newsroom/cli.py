@@ -19,6 +19,7 @@ from newsroom.config import load_sources
 from newsroom.digester import NoSlotError, determine_slot, generate_digest
 from newsroom.fetcher import fetch_due_sources, should_fetch
 from newsroom.filter_arxiv import filter_pending_arxiv_items
+from newsroom.logging_setup import configure_logging
 from newsroom.notifier import (
     Notifier,
     _send_with_pync,  # dev-only test ping; private name intentional
@@ -29,6 +30,14 @@ from newsroom.state import DEFAULT_DB_PATH, State
 app = typer.Typer(help="Daily Newsroom — local news-digest agent")
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+@app.callback()
+def _cli_entry(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable DEBUG-level logging"),
+) -> None:
+    """Initialize logging before any subcommand runs."""
+    configure_logging(verbose=verbose)
 
 
 def _db_path() -> Path:
