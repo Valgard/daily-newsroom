@@ -11,6 +11,7 @@ from newsroom.config import Source
 from newsroom.state import State
 from newsroom.status import (
     _describe_next,
+    _format_past_duration,
     _format_relative_time,
     _next_fetch_for,
     _next_launchd_ticks,
@@ -50,6 +51,26 @@ def test_format_relative_time_minutes() -> None:
 
 def test_format_relative_time_hours_and_minutes() -> None:
     assert _format_relative_time(3 * 3600 + 15 * 60) == "3h 15min"
+
+
+# ── _format_past_duration ────────────────────────────────────────────
+
+
+def test_format_past_duration_sub_minute() -> None:
+    assert _format_past_duration(30) == "<1min ago"
+
+
+def test_format_past_duration_minutes() -> None:
+    assert _format_past_duration(42 * 60) == "42min ago"
+
+
+def test_format_past_duration_hours_and_minutes() -> None:
+    # 1321 minutes → 22h 1min ago (the case that prompted this fix)
+    assert _format_past_duration(1321 * 60) == "22h 1min ago"
+
+
+def test_format_past_duration_exact_hour() -> None:
+    assert _format_past_duration(3 * 3600) == "3h 0min ago"
 
 
 # ── _next_fetch_for ───────────────────────────────────────────────────

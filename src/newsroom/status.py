@@ -23,17 +23,27 @@ SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
 
 
+def _format_duration(seconds: float) -> str:
+    """Render a non-negative duration as '<1min' / 'Nmin' / 'Xh Ymin'."""
+    if seconds < SECONDS_PER_MINUTE:
+        return "<1min"
+    if seconds < SECONDS_PER_HOUR:
+        return f"{int(seconds // SECONDS_PER_MINUTE)}min"
+    hours = int(seconds // SECONDS_PER_HOUR)
+    minutes = int((seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE)
+    return f"{hours}h {minutes}min"
+
+
 def _format_relative_time(delta_seconds: float) -> str:
     """Render a future-delta as 'overdue' / '<1min' / 'Nmin' / 'Xh Ymin'."""
     if delta_seconds <= 0:
         return "overdue"
-    if delta_seconds < SECONDS_PER_MINUTE:
-        return "<1min"
-    if delta_seconds < SECONDS_PER_HOUR:
-        return f"{int(delta_seconds // SECONDS_PER_MINUTE)}min"
-    hours = int(delta_seconds // SECONDS_PER_HOUR)
-    minutes = int((delta_seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE)
-    return f"{hours}h {minutes}min"
+    return _format_duration(delta_seconds)
+
+
+def _format_past_duration(delta_seconds: float) -> str:
+    """Render a past-delta as '<1min ago' / 'Nmin ago' / 'Xh Ymin ago'."""
+    return f"{_format_duration(max(0, delta_seconds))} ago"
 
 
 def _next_fetch_for(source_row: Any, now: datetime) -> str:
@@ -135,7 +145,7 @@ def print_status(state, *, console: Console) -> None:
         if last:
             try:
                 delta = now_utc - datetime.fromisoformat(last).astimezone(UTC)
-                age = f"{int(delta.total_seconds() / 60)} min ago"
+                age = _format_past_duration(delta.total_seconds())
             except ValueError:
                 age = last
         next_fetch = _next_fetch_for(src, now_utc)
