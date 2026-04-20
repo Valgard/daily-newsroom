@@ -138,24 +138,41 @@ async def _run_fetch_score_notify(
     return results
 
 
+# Asymmetric catchup window: only fires at or AFTER the launchd-scheduled
+# time, never before — otherwise the regular launchd tick at 07:00/20:00
+# never gets a chance to run because fetch-tick at 05:00 already triggered
+# the catchup. Window length matches plist StartCalendarInterval delay
+# tolerance for sleep-wake recovery.
 _CATCHUP_WINDOW_HOURS = 2
+
+# Must match config/launchd/de.svenpoeche.newsroom.digest-{morning,evening}.plist
+# StartCalendarInterval Hour values.
+SCHEDULED_MORNING_HOUR = 7
+SCHEDULED_EVENING_HOUR = 20
+
+
+def _is_in_catchup_window(hour: int, slot: str) -> bool:
+    """True if `hour` is in [scheduled, scheduled + WINDOW] inclusive.
+
+    The catchup safety-net (spec §6.5) only kicks in once the regularly
+    scheduled launchd time has passed. This avoids racing the regular tick.
+    """
+    scheduled = SCHEDULED_MORNING_HOUR if slot == "morning" else SCHEDULED_EVENING_HOUR
+    return scheduled <= hour <= scheduled + _CATCHUP_WINDOW_HOURS
 
 
 def _maybe_run_digest_catchup(state: State) -> None:
-    """If near morning or evening window and no digest for today, generate it.
+    """If past the scheduled time and no digest for today, generate it.
 
-    Safety net per spec §6.5: catches missed digest slots when launchd fires late.
+    Safety net per spec §6.5: catches missed digest slots when launchd fires
+    late (Mac was asleep).
     """
-    from newsroom.digester import BERLIN_TZ, EVENING_START_HOUR, MORNING_START_HOUR  # noqa: PLC0415
+    from newsroom.digester import BERLIN_TZ  # noqa: PLC0415
 
     now = datetime.now(BERLIN_TZ)
     today = now.date().isoformat()
-    for slot, target_hour in [
-        ("morning", MORNING_START_HOUR + _CATCHUP_WINDOW_HOURS),
-        ("evening", EVENING_START_HOUR + _CATCHUP_WINDOW_HOURS),
-    ]:
-        near_window = abs(now.hour - target_hour) <= _CATCHUP_WINDOW_HOURS
-        if near_window and state.get_digest(today, slot) is None:
+    for slot in ("morning", "evening"):
+        if _is_in_catchup_window(now.hour, slot) and state.get_digest(today, slot) is None:
             logger.info("Digest-catchup: generating missed %s digest for %s", slot, today)
             asyncio.run(generate_digest(state=state, slot=slot, date=now.date()))
 

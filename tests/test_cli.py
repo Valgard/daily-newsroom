@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
-from newsroom.cli import app
+from newsroom.cli import (
+    SCHEDULED_EVENING_HOUR,
+    SCHEDULED_MORNING_HOUR,
+    _is_in_catchup_window,
+    app,
+)
 
 runner = CliRunner()
 
@@ -41,3 +47,41 @@ def test_cli_notify_test_command(tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["notify", "--test"])
     # exit 0 or 1 depending on pync availability; should not raise
     assert result.exit_code in (0, 1)
+
+
+# ── catchup-window logic ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("hour", "slot", "expected"),
+    [
+        # Morning slot scheduled at 07:00; window: [7, 9] inclusive
+        (5, "morning", False),  # before scheduled — must NOT trigger (regression: was True)
+        (6, "morning", False),  # before scheduled — must NOT trigger
+        (7, "morning", True),  # exact scheduled — first valid
+        (8, "morning", True),  # 1h after — catchup zone
+        (9, "morning", True),  # 2h after — last valid
+        (10, "morning", False),  # 3h after — too late
+        (12, "morning", False),
+        (23, "morning", False),
+        # Evening slot scheduled at 20:00; window: [20, 22] inclusive
+        (19, "evening", False),
+        (20, "evening", True),
+        (21, "evening", True),
+        (22, "evening", True),
+        (23, "evening", False),
+        (5, "evening", False),
+    ],
+)
+def test_catchup_window_only_fires_at_or_after_scheduled_time(
+    hour: int, slot: str, expected: bool
+) -> None:
+    """Catchup must NOT fire before the scheduled launchd time, otherwise the
+    regular launchd tick never gets a chance to run."""
+    assert _is_in_catchup_window(hour, slot) is expected
+
+
+def test_catchup_constants_match_plist_schedule() -> None:
+    """Constants must match the launchd plist StartCalendarInterval Hour values."""
+    assert SCHEDULED_MORNING_HOUR == 7
+    assert SCHEDULED_EVENING_HOUR == 20
