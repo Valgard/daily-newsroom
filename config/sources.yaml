@@ -111,17 +111,19 @@ sources:
     feed_type: rss
     interval_seconds: 21600
     enabled: true
-  # The Batch has no RSS; sitemap-0.xml has ~800 URLs but <lastmod> is the daily
-  # site-build time (not article dates). We trust og:article:published_time per
-  # URL instead — see the variety-heuristic fallback in parse_sitemap_scrape.
+  # The Batch publishes weekly via email — no public RSS. We subscribe with a
+  # kill-the-newsletter.com inbox that converts incoming mails to an Atom feed.
+  # Inbox email (for re-subscribe / unsubscribe via deeplearning.ai's manage page):
+  #   do4ukfzxynw862ny6i40@kill-the-newsletter.com
+  # Subscription registered 2026-04-20 with profile: Sven Pöche / Germany /
+  # Software Engineer - Machine Learning. Items arrive ~weekly (Wed evenings).
   - name: the-batch
     category: ai
     subcategory: curated
-    url: https://www.deeplearning.ai/sitemap-0.xml
-    feed_type: sitemap-scrape
-    interval_seconds: 43200
+    url: https://kill-the-newsletter.com/feeds/do4ukfzxynw862ny6i40.xml
+    feed_type: atom
+    interval_seconds: 21600
     enabled: true
-    url_filter: '^/the-batch/[^/]+/$'
 
   # Tier 3: Community
   - name: hackernews-ai
