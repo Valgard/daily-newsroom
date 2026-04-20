@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -8,7 +8,9 @@ from pytest_httpx import HTTPXMock
 
 from newsroom.config import Source
 from newsroom.fetcher import (
+    FETCH_MAX_ITEM_AGE_DAYS,
     ParsedItem,
+    _is_fresh,
     fetch_due_sources,
     fetch_one_raw,
     parse_feed,
@@ -35,6 +37,48 @@ def _source_row(**overrides) -> dict:
     )
     base.update(overrides)
     return base
+
+
+# ── _is_fresh: age-filter at ingest ─────────────────────────────────
+
+_NOW = datetime(2026, 4, 20, 17, 0, tzinfo=UTC)
+
+
+def test_is_fresh_recent_iso_accepted() -> None:
+    assert _is_fresh("2026-04-19T10:00:00+00:00", now=_NOW) is True
+
+
+def test_is_fresh_old_iso_rejected() -> None:
+    assert _is_fresh("2024-01-01T00:00:00+00:00", now=_NOW) is False
+
+
+def test_is_fresh_exactly_seven_days_ago_accepted() -> None:
+    # Cutoff is inclusive: pub >= now - 7d → still fresh
+    seven_days = (_NOW - timedelta(days=FETCH_MAX_ITEM_AGE_DAYS)).isoformat()
+    assert _is_fresh(seven_days, now=_NOW) is True
+
+
+def test_is_fresh_just_past_cutoff_rejected() -> None:
+    # 7 days + 1 minute ago → rejected
+    over = (_NOW - timedelta(days=FETCH_MAX_ITEM_AGE_DAYS, minutes=1)).isoformat()
+    assert _is_fresh(over, now=_NOW) is False
+
+
+def test_is_fresh_none_published_accepted() -> None:
+    # Ambiguous (no date) passes through — we'd rather ingest noise than drop
+    # a legitimate current item from a feed that omits dates.
+    assert _is_fresh(None, now=_NOW) is True
+
+
+def test_is_fresh_malformed_date_accepted() -> None:
+    # Defensive: unparseable date = can't verify old → pass through
+    assert _is_fresh("not-a-date", now=_NOW) is True
+
+
+def test_is_fresh_naive_iso_treated_as_utc() -> None:
+    # Feed without tz info → assume UTC, don't reject
+    naive = (_NOW - timedelta(hours=2)).replace(tzinfo=None).isoformat()
+    assert _is_fresh(naive, now=_NOW) is True
 
 
 @freeze_time("2026-04-19 10:00:00")
@@ -242,10 +286,15 @@ def test_parse_json_github_releases(fixtures_dir: Path) -> None:
     assert second.author is None
 
 
+@freeze_time("2026-04-20 12:00:00")
 async def test_fetch_due_sources_dispatches_sitemap_scrape(
     state: State, httpx_mock: HTTPXMock, fixtures_dir: Path
 ) -> None:
-    """End-to-end: a sitemap-scrape source goes through the new parser + inserts items."""
+    """End-to-end: a sitemap-scrape source goes through the new parser + inserts items.
+
+    Frozen clock so the fetcher's freshness window (FETCH_MAX_ITEM_AGE_DAYS=7)
+    doesn't reject fixture lastmods as real time advances.
+    """
     state.upsert_source(
         Source(
             name="anthropic-news",

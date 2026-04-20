@@ -9,7 +9,7 @@ import logging
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -24,6 +24,38 @@ USER_AGENT = "daily-newsroom/0.1 (+https://github.com/none)"
 DEFAULT_TIMEOUT = 30.0
 HTTP_NOT_MODIFIED = 304
 HTTP_OK = 200
+
+# Ingest-age filter: items whose known publication date is older than this
+# get rejected at insert time. Prevents sitemap-scrape historicals from
+# flooding the scoring queue. Symmetric to DIGEST_MAX_ITEM_AGE_DAYS but
+# enforced earlier — if the fetcher drops them, they never land in the DB.
+# Ambiguous cases (NULL or unparseable published_at) pass through.
+FETCH_MAX_ITEM_AGE_DAYS = 7
+
+
+def _is_fresh(
+    published_at: str | None,
+    *,
+    now: datetime,
+    max_age_days: int = FETCH_MAX_ITEM_AGE_DAYS,
+) -> bool:
+    """Return False only when we can *positively* prove the item is too old.
+
+    Pass-through for None or unparseable dates — we'd rather ingest noise
+    than silently drop a current item whose feed omits or malforms the date.
+    """
+    if published_at is None:
+        return True
+    try:
+        pub = dateparser.parse(published_at)
+    except (ValueError, TypeError, OverflowError):
+        return True
+    if pub is None:
+        return True
+    if pub.tzinfo is None:
+        pub = pub.replace(tzinfo=UTC)
+    return pub >= now - timedelta(days=max_age_days)
+
 
 SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 SITEMAP_VARIETY_THRESHOLD = 0.1
@@ -280,7 +312,11 @@ async def _fetch_and_ingest_one(src_row: Any, state: State) -> FetchResult:
     else:
         parsed = parse_feed(outcome.body, feed_type=feed_type)
     inserted = 0
+    rejected_old = 0
     for item in parsed:
+        if not _is_fresh(item.published_at, now=now):
+            rejected_old += 1
+            continue
         if state.insert_item(
             source_id=src_row["id"],
             item_hash=item.item_hash,
@@ -292,6 +328,13 @@ async def _fetch_and_ingest_one(src_row: Any, state: State) -> FetchResult:
             category=src_row["category"],
         ):
             inserted += 1
+    if rejected_old:
+        logger.debug(
+            "%s: rejected %d item(s) older than %dd at ingest",
+            name,
+            rejected_old,
+            FETCH_MAX_ITEM_AGE_DAYS,
+        )
 
     state.update_source_fetch_state(
         name=name,

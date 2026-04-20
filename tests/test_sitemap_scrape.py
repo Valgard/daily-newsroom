@@ -59,9 +59,9 @@ async def test_parse_sitemap_scrape_varied_lastmod_wins(
     raw = (fixtures_dir / "sitemap_varied.xml").read_bytes()
     items = await parse_sitemap_scrape(raw, url_filter=r"^/news/", now=NOW)
     by_title = {i.title: i for i in items}
-    assert by_title["first-article"].published_at == "2026-03-01T10:00:00+00:00"
-    assert by_title["second-article"].published_at == "2026-04-01T11:00:00+00:00"
-    assert by_title["third-article"].published_at == "2026-04-10T09:00:00+00:00"
+    assert by_title["first-article"].published_at == "2026-04-14T10:00:00+00:00"
+    assert by_title["second-article"].published_at == "2026-04-16T11:00:00+00:00"
+    assert by_title["third-article"].published_at == "2026-04-18T09:00:00+00:00"
 
 
 async def test_parse_sitemap_scrape_stale_lastmod_falls_back_to_og(
