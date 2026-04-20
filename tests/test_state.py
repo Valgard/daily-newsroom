@@ -168,6 +168,26 @@ def test_list_items_by_status(state: State) -> None:
     assert len(news) == 2
 
 
+def test_list_items_for_scoring_excludes_already_notified(state: State) -> None:
+    """Bulk-suppression safety: an item whose `notified_at` was set out-of-band
+    (e.g. a historical bulk SQL suppression) must not be picked up for scoring
+    later, even if its status is still 'new'. Otherwise the scorer silently
+    re-stamps `scored_at` to "today" while the Notifier's early-return swallows
+    the push — producing ghost items in daily stats.
+    """
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T2"))
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T3"))
+    # Simulate bulk-suppression on T2: notified_at set without touching status.
+    t2 = next(r for r in state.list_items_by_status("new", limit=10) if r["title"] == "T2")
+    state.mark_item_notified(item_id=t2["id"], pushed=False)
+
+    pending_titles = {r["title"] for r in state.list_items_for_scoring(limit=10)}
+    assert pending_titles == {"T1", "T3"}
+
+
 def test_mark_item_scored(state: State) -> None:
     state.upsert_source(_sample_source())
     src = state.get_source_by_name("arxiv-cs-cl")
@@ -246,6 +266,36 @@ def test_daily_stats_notified_counts_only_real_pushes(state: State) -> None:
     today = datetime.now(UTC).date().isoformat()
     stats = state.get_daily_stats(today)
     assert stats["notified_today"] == 1  # suppressed does not count
+
+
+def test_daily_stats_scored_high_excludes_bulk_notified(state: State) -> None:
+    """scored_high_today counts *push-eligible* scorings today. Items whose
+    notified_at was set out-of-band (bulk-SQL suppression) and never actually
+    pushed (push_sent=0) are archive-noise from a historical event — not news
+    today, even if the scorer re-stamped scored_at later.
+    """
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="real-news"))
+    state.insert_item(
+        **{
+            **_sample_item_kwargs(src["id"], title="bulk-noise"),
+            "item_hash": "h-bulk",
+            "url": "https://example.com/c",
+        }
+    )
+    items = state.list_items_by_status("new", limit=10)
+    real = next(r for r in items if r["title"] == "real-news")
+    noise = next(r for r in items if r["title"] == "bulk-noise")
+    # Real: scored today, untouched by bulk-suppression
+    state.mark_item_scored(item_id=real["id"], importance=4, reason="x", model="m")
+    # Bulk-noise: notified_at set first (suppression), THEN scored today
+    state.mark_item_notified(item_id=noise["id"], pushed=False)
+    state.mark_item_scored(item_id=noise["id"], importance=4, reason="x", model="m")
+
+    today = datetime.now(UTC).date().isoformat()
+    stats = state.get_daily_stats(today)
+    assert stats["scored_high_today"] == 1  # bulk-noise excluded
 
 
 def test_ensure_schema_runs_migration_3(tmp_path: Path) -> None:

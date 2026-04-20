@@ -255,7 +255,13 @@ class State:
         )
 
     def list_items_for_scoring(self, limit: int = 100) -> list[sqlite3.Row]:
-        """Return items with status 'new' OR 'filtered_in', ready to be scored.
+        """Return items with status 'new' OR 'filtered_in' and no `notified_at`.
+
+        The `notified_at IS NULL` guard protects against out-of-band suppression:
+        if something (a historical bulk SQL, a migration, a debug session) sets
+        `notified_at` without transitioning `status` to 'scored', the item would
+        otherwise sit in the scoring queue and get silently re-scored hours or
+        days later, overwriting `scored_at`. See 2026-04-20 forensic thread.
 
         Joined with sources to expose source_name + source_subcategory.
         """
@@ -266,6 +272,7 @@ class State:
                 "sources.subcategory AS source_subcategory "
                 "FROM items JOIN sources ON items.source_id = sources.id "
                 "WHERE items.status IN ('new', 'filtered_in') "
+                "  AND items.notified_at IS NULL "
                 "ORDER BY items.fetched_at ASC LIMIT ?",
                 (limit,),
             ).fetchall()
@@ -480,8 +487,13 @@ class State:
         fetched = conn.execute(
             "SELECT COUNT(*) FROM items WHERE DATE(fetched_at) = ?", (date_iso,)
         ).fetchone()[0]
+        # Count items scored today with high importance — but exclude bulk-noise:
+        # items whose notified_at was set out-of-band (historical SQL suppression)
+        # and never actually pushed. Symmetric to list_items_for_scoring's guard.
         scored_high = conn.execute(
-            "SELECT COUNT(*) FROM items WHERE DATE(scored_at) = ? AND importance >= 4",
+            "SELECT COUNT(*) FROM items "
+            "WHERE DATE(scored_at) = ? AND importance >= 4 "
+            "  AND (notified_at IS NULL OR push_sent = 1)",
             (date_iso,),
         ).fetchone()[0]
         notified = conn.execute(
