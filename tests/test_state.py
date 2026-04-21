@@ -2,7 +2,6 @@ import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 from freezegun import freeze_time
 
 from newsroom.config import Source
@@ -307,14 +306,55 @@ def test_ensure_schema_runs_migration_3(tmp_path: Path) -> None:
     assert "push_sent" in cols
 
 
-def test_digests_insert_unique_per_slot(state: State) -> None:
+def test_insert_digest_duplicate_is_silently_ignored(state: State) -> None:
+    """Concurrent insert of same (date, slot) must be race-safe: loser no-ops,
+    winner's row stays intact. Previously this raised IntegrityError."""
     state.insert_digest(
         date="2026-04-19", slot="morning", file_path="/tmp/m.md", item_count=20, model="opus"
     )
-    with pytest.raises(Exception):
-        state.insert_digest(
-            date="2026-04-19", slot="morning", file_path="/tmp/m2.md", item_count=21, model="opus"
-        )
+    # Must NOT raise IntegrityError — the UNIQUE constraint is enforced via
+    # INSERT OR IGNORE (silent no-op), not Python exceptions.
+    state.insert_digest(
+        date="2026-04-19", slot="morning", file_path="/tmp/m2.md", item_count=21, model="opus"
+    )
+    row = state.get_digest("2026-04-19", "morning")
+    assert row is not None
+    # First-writer-wins: the duplicate insert left the original row untouched.
+    assert row["file_path"] == "/tmp/m.md"
+    assert row["item_count"] == 20
+
+
+def test_claim_digest_slot_first_call_succeeds(state: State) -> None:
+    """First claim of a (date, slot) pair returns True and creates a placeholder row."""
+    assert state.claim_digest_slot(date="2026-04-19", slot="morning", model="opus") is True
+    row = state.get_digest("2026-04-19", "morning")
+    assert row is not None
+    assert row["model"] == "opus"
+    # Placeholder values: real file_path / item_count arrive via finalize_digest
+    assert row["file_path"] == ""
+    assert row["item_count"] == 0
+
+
+def test_claim_digest_slot_second_call_for_same_slot_fails(state: State) -> None:
+    """Second claim of the same (date, slot) returns False — slot is owned by the first claimer."""
+    assert state.claim_digest_slot(date="2026-04-19", slot="morning", model="opus") is True
+    assert state.claim_digest_slot(date="2026-04-19", slot="morning", model="opus") is False
+
+
+def test_claim_digest_slot_different_slots_are_independent(state: State) -> None:
+    """Morning and evening for the same date are separate slots — both claimable."""
+    assert state.claim_digest_slot(date="2026-04-19", slot="morning", model="opus") is True
+    assert state.claim_digest_slot(date="2026-04-19", slot="evening", model="opus") is True
+
+
+def test_finalize_digest_updates_claim_row(state: State) -> None:
+    """After claim+finalize, get_digest returns real file_path and item_count."""
+    state.claim_digest_slot(date="2026-04-19", slot="morning", model="opus")
+    state.finalize_digest(date="2026-04-19", slot="morning", file_path="/tmp/out.md", item_count=42)
+    row = state.get_digest("2026-04-19", "morning")
+    assert row["file_path"] == "/tmp/out.md"
+    assert row["item_count"] == 42
+    assert row["model"] == "opus"  # model set at claim time, preserved through finalize
 
 
 def test_get_digest_returns_existing(state: State) -> None:

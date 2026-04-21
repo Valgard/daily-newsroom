@@ -116,10 +116,16 @@ async def generate_digest(
     if summaries_dir is None:
         summaries_dir = Path.home() / "Documents" / "!AI" / "article_summaries"
 
+    target_dir = output_root / f"{date.year:04d}" / f"{date.month:02d}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_file = target_dir / f"{date.isoformat()}.md"
+
     existing = state.get_digest(date.isoformat(), slot)
     if existing and not force:
         logger.info("digest already exists for %s/%s, skipping", date, slot)
-        return Path(existing["file_path"])
+        # Claimed but not yet finalized → file_path is empty; return the
+        # target path the winner will write to.
+        return Path(existing["file_path"] or str(target_file))
     if existing and force:
         # Clear previous digest's item-marks + DB row so regeneration is clean.
         logger.info("--force: clearing previous digest for %s/%s", date, slot)
@@ -127,15 +133,18 @@ async def generate_digest(
         state.unmark_items_by_digest_label(label)
         state.delete_digest(date=date.isoformat(), slot=slot)
 
+    # Atomic slot claim before any expensive work. If another process won the
+    # race between get_digest() above and this claim, we abort without calling
+    # Opus — the winner will write the file.
+    if not state.claim_digest_slot(date=date.isoformat(), slot=slot, model=DIGEST_MODEL):
+        logger.info("digest slot %s/%s claimed concurrently, skipping without Opus", date, slot)
+        return target_file
+
     cutoff = _cutoff_for_slot(slot, state)
     items = state.list_items_for_digest(since_iso=cutoff)
 
-    target_dir = output_root / f"{date.year:04d}" / f"{date.month:02d}"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_file = target_dir / f"{date.isoformat()}.md"
-
     if not items:
-        # No items → write/append placeholder, still mark digest
+        # No items → write/append placeholder, still finalize digest
         if slot == "morning":
             content = (
                 f"# News-Digest {date.strftime('%d.%m.%Y')} ({slot.capitalize()})\n\n"
@@ -144,12 +153,11 @@ async def generate_digest(
         else:
             content = "\n\n---\n\n## Abend-Digest\n\n_Keine neuen Items seit Morgen-Digest._\n"
         _write_digest_file(target_file, content, slot=slot, force=force)
-        state.insert_digest(
+        state.finalize_digest(
             date=date.isoformat(),
             slot=slot,
             file_path=str(target_file),
             item_count=0,
-            model=DIGEST_MODEL,
         )
         return target_file
 
@@ -174,12 +182,11 @@ async def generate_digest(
             item_id=item["id"],
             digest_label=f"{date.isoformat()}-{slot}",
         )
-    state.insert_digest(
+    state.finalize_digest(
         date=date.isoformat(),
         slot=slot,
         file_path=str(target_file),
         item_count=len(items),
-        model=DIGEST_MODEL,
     )
     return target_file
 

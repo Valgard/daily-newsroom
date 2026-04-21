@@ -224,6 +224,31 @@ async def test_generate_digest_falls_back_on_llm_error(
 #    evening appending instead of replacing) ───────────────────────────
 
 
+async def test_generate_digest_skips_opus_when_claim_fails(
+    populated_state: State, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Loser of the slot-claim race must abort cheaply — no Opus call, no crash.
+
+    Simulates: another process claimed the slot between our initial get_digest()
+    check and our own claim attempt. The claim method returns False; the function
+    must return without ever invoking the LLM.
+    """
+    monkeypatch.setattr(populated_state, "claim_digest_slot", lambda **_kw: False)
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# Should never be produced"
+
+    path = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    mock_agent.ask.assert_not_called()
+    # Return value is a Path — caller can still locate the winner's output.
+    assert path is not None
+
+
 async def test_generate_digest_force_regenerates_existing(
     populated_state: State, tmp_path: Path
 ) -> None:

@@ -438,10 +438,35 @@ class State:
         item_count: int,
         model: str,
     ) -> None:
+        """Insert a complete digest row. Race-safe: duplicate (date, slot) silently no-ops."""
         conn = self.connection()
         conn.execute(
-            "INSERT INTO digests (date, slot, file_path, item_count, model) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO digests "
+            "(date, slot, file_path, item_count, model) VALUES (?, ?, ?, ?, ?)",
             (date, slot, file_path, item_count, model),
+        )
+
+    def claim_digest_slot(self, *, date: str, slot: str, model: str) -> bool:
+        """Atomically reserve a (date, slot) pair before expensive work (LLM call).
+
+        Returns True if this caller claimed the slot (safe to proceed with Opus),
+        False if another process already owns it (caller must abort and not spend
+        tokens). Complete the claim by calling finalize_digest after file write.
+        """
+        conn = self.connection()
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO digests "
+            "(date, slot, file_path, item_count, model) VALUES (?, ?, '', 0, ?)",
+            (date, slot, model),
+        )
+        return cursor.rowcount > 0
+
+    def finalize_digest(self, *, date: str, slot: str, file_path: str, item_count: int) -> None:
+        """Populate a claimed digest row with real file_path and item_count."""
+        conn = self.connection()
+        conn.execute(
+            "UPDATE digests SET file_path = ?, item_count = ? WHERE date = ? AND slot = ?",
+            (file_path, item_count, date, slot),
         )
 
     def get_digest(self, date: str, slot: str) -> sqlite3.Row | None:
