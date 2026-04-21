@@ -32,6 +32,24 @@ Full design: `docs/superpowers/specs/2026-04-19-daily-newsroom-design.md`.
 - The cross-link lookup in `digester._resolve_cross_link` does a full-text scan of
   `!AI/article_summaries/`. If that directory grows to thousands of files, introduce a
   pre-built URL index.
+- `newsroom status` column "Last fetched" is `sources.last_fetched_at`, which only
+  advances when the feed actually delivers **new items**. A quiet blog can read as
+  "28h ago" while being probed hourly — the real probe cadence lives in
+  `sources.last_checked_at`. Don't diagnose "fetcher stuck" from the status table
+  alone; cross-check with `last_checked_at` via SQL or the error column.
+
+## Known Architecture Deferrals
+
+Pragmatic Phase-1 compromises that violate a stated invariant. Safe today, owed a
+refactor before Phase-2 scope grows.
+
+- **Digest catchup calls `generate_digest()` directly from the fetch path**
+  (`cli.py::_maybe_run_digest_catchup`). This crosses the
+  "fetcher/scorer/digester/notifier communicate only via state DB" invariant.
+  Race-safe since the `claim_digest_slot` fix (commit `b1b84a4`), but still a
+  direct Python call between modules. Phase-2 refactor: fetcher writes a
+  `missed_slot` marker to state; a dedicated `newsroom digest-catchup` command
+  (or the regular `digest` command itself) consumes markers.
 
 ## Development Conventions
 
