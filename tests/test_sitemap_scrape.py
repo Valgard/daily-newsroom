@@ -3,8 +3,11 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
+import pytest
 from pytest_httpx import HTTPXMock
 
+from newsroom import fetcher as fetcher_module
 from newsroom.fetcher import ParsedItem, parse_sitemap_scrape
 
 NOW = datetime(2026, 4, 19, 12, 0, tzinfo=UTC)
@@ -164,6 +167,66 @@ async def test_parse_sitemap_scrape_og_fetch_failure_skips_item(
     items = await parse_sitemap_scrape(raw, url_filter=r"^/news/", now=NOW)
     titles = {i.title for i in items}
     assert titles == {"Second", "Third"}
+
+
+@pytest.mark.parametrize(
+    "exc_cls",
+    [
+        httpx.ReadError,
+        httpx.WriteError,
+        httpx.PoolTimeout,
+    ],
+)
+async def test_parse_sitemap_scrape_og_transport_error_skips_item(
+    httpx_mock: HTTPXMock,
+    fixtures_dir: Path,
+    exc_cls: type[Exception],
+) -> None:
+    """Transport-level httpx errors (ReadError, WriteError, PoolTimeout) on one OG fetch
+    must not crash the whole sitemap run. The failing item is skipped; the rest pass through.
+
+    Regression: before the fix, only ConnectError/ConnectTimeout/ReadTimeout/RemoteProtocolError
+    were caught — ReadError (and friends) escaped, asyncio.gather raised, the entire fetch died.
+    """
+    httpx_mock.add_exception(
+        exc_cls("transport-level boom"),
+        url="https://example.com/news/first-article",
+    )
+    httpx_mock.add_response(
+        url="https://example.com/news/second-article", content=_og_html(title="Second")
+    )
+    httpx_mock.add_response(
+        url="https://example.com/news/third-article", content=_og_html(title="Third")
+    )
+    raw = (fixtures_dir / "sitemap_varied.xml").read_bytes()
+    items = await parse_sitemap_scrape(raw, url_filter=r"^/news/", now=NOW)
+    assert {i.title for i in items} == {"Second", "Third"}
+
+
+async def test_gather_og_returns_none_for_unexpected_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Defense-in-depth: even if _fetch_og_metadata raises an exception type the
+    inner try/except did not anticipate (future httpx subclass, library bug, etc.),
+    _gather_og must NOT propagate — it returns None for that slot and lets the
+    others succeed. asyncio.gather without return_exceptions=True would tear down
+    the entire batch, killing the whole fetch run.
+    """
+    call_count = 0
+
+    async def flaky(url: str, client: object) -> dict[str, str | None] | None:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("simulated regression: leaked exception")
+        return {"title": "ok", "description": None, "published_time": None}
+
+    monkeypatch.setattr(fetcher_module, "_fetch_og_metadata", flaky)
+    entries = [("https://a.example/", None), ("https://b.example/", None)]
+    results = await fetcher_module._gather_og(entries, client=None, max_concurrent=2)  # type: ignore[arg-type]
+    assert results[0] is None
+    assert results[1] is not None
+    assert results[1]["title"] == "ok"
 
 
 async def test_parse_sitemap_scrape_malformed_xml_returns_empty() -> None:

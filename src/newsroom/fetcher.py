@@ -400,12 +400,10 @@ async def _fetch_og_metadata(url: str, client: httpx.AsyncClient) -> dict[str, s
     """
     try:
         response = await client.get(url, timeout=15.0, follow_redirects=True)
-    except (
-        httpx.ConnectError,
-        httpx.ConnectTimeout,
-        httpx.ReadTimeout,
-        httpx.RemoteProtocolError,
-    ) as e:
+    except httpx.RequestError as e:
+        # RequestError covers all transport-level failures (ConnectError, ReadError,
+        # WriteError, PoolTimeout, RemoteProtocolError, …) without catching
+        # HTTPStatusError — the latter signals a server response we do want to inspect.
         logger.debug("og fetch failed for %s: %s", url, e)
         return None
     if response.status_code != HTTP_OK:
@@ -498,11 +496,26 @@ async def _gather_og(
     client: httpx.AsyncClient,
     max_concurrent: int,
 ) -> list[dict[str, str | None] | None]:
-    """Run _fetch_og_metadata concurrently with a semaphore."""
+    """Run _fetch_og_metadata concurrently with a semaphore.
+
+    Defense-in-depth: any exception escaping _one (a future httpx subclass not yet
+    handled, a bug in our code, etc.) is mapped to None for that slot rather than
+    tearing down the whole gather. Without this, a single broken URL would crash
+    the entire sitemap-scrape run — which is exactly the failure mode that landed
+    seven full tracebacks in fetch.err.log historically.
+    """
     sem = asyncio.Semaphore(max_concurrent)
 
     async def _one(url: str) -> dict[str, str | None] | None:
         async with sem:
             return await _fetch_og_metadata(url, client)
 
-    return await asyncio.gather(*(_one(url) for url, _ in entries))
+    raw = await asyncio.gather(*(_one(url) for url, _ in entries), return_exceptions=True)
+    results: list[dict[str, str | None] | None] = []
+    for url_pair, item in zip(entries, raw, strict=True):
+        if isinstance(item, BaseException):
+            logger.warning("og gather suppressed unexpected error for %s: %s", url_pair[0], item)
+            results.append(None)
+        else:
+            results.append(item)
+    return results
