@@ -64,6 +64,7 @@ def test_determine_slot_returns_none_outside_windows() -> None:
         determine_slot()
 
 
+@freeze_time("2026-04-19 22:30:00")
 def test_format_items_for_prompt_groups_by_subcategory(populated_state: State) -> None:
     # Add a second source with different subcategory
     populated_state.upsert_source(
@@ -96,6 +97,7 @@ def test_format_items_for_prompt_groups_by_subcategory(populated_state: State) -
     assert "curated" in formatted.lower() or "Curated" in formatted
 
 
+@freeze_time("2026-04-19 22:30:00")
 def test_format_items_for_prompt_includes_published_at(populated_state: State) -> None:
     """Digest prompt needs published_at so Opus can render relative time."""
     items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
@@ -104,6 +106,7 @@ def test_format_items_for_prompt_includes_published_at(populated_state: State) -
     assert "published=2026-04-19T02:00:00Z" in formatted
 
 
+@freeze_time("2026-04-19 22:30:00")
 def test_format_items_for_prompt_preserves_body_up_to_1200_chars(populated_state: State) -> None:
     """Body truncation is 1200 chars (was 300) — newsletter-style needs more material."""
     src_id = populated_state.get_source_by_name("anthropic")["id"]
@@ -130,6 +133,7 @@ def test_format_items_for_prompt_preserves_body_up_to_1200_chars(populated_state
     assert long_body[:800] in formatted
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_writes_file(populated_state: State, tmp_path: Path) -> None:
     output_root = tmp_path / "news"
     mock_agent = AsyncMock()
@@ -147,6 +151,7 @@ async def test_generate_digest_writes_file(populated_state: State, tmp_path: Pat
     assert "Morgen" in body
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_records_in_state(populated_state: State, tmp_path: Path) -> None:
     mock_agent = AsyncMock()
     mock_agent.ask.return_value = "# Test"
@@ -163,6 +168,7 @@ async def test_generate_digest_records_in_state(populated_state: State, tmp_path
     assert row["model"] == "claude-opus-4-7"
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_marks_items_included(populated_state: State, tmp_path: Path) -> None:
     mock_agent = AsyncMock()
     mock_agent.ask.return_value = "# Test"
@@ -202,6 +208,7 @@ async def test_generate_digest_evening_appends(populated_state: State, tmp_path:
     assert "## Abend-Digest" in body
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_falls_back_on_llm_error(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -249,6 +256,7 @@ async def test_generate_digest_skips_opus_when_claim_fails(
     assert path is not None
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_force_regenerates_existing(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -284,6 +292,7 @@ async def test_generate_digest_force_regenerates_existing(
     assert "First run content" not in file_body
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_force_evening_replaces_previous_evening(
     populated_state: State, tmp_path: Path
 ) -> None:

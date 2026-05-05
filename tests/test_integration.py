@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+from freezegun import freeze_time
 from pytest_httpx import HTTPXMock
 
 from newsroom.config import Source
@@ -12,6 +13,7 @@ from newsroom.scorer import score_pending_items
 from newsroom.state import State
 
 
+@freeze_time("2026-04-19 10:00:00")
 async def test_end_to_end_pipeline(
     tmp_path: Path,
     fixtures_dir: Path,

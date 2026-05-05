@@ -384,6 +384,7 @@ def test_delete_digest_is_idempotent(state: State) -> None:
     state.delete_digest(date="2026-04-19", slot="evening")
 
 
+@freeze_time("2026-04-19 22:30:00")
 def test_list_items_for_digest_excludes_low_importance(state: State) -> None:
     """Digest must include only importance >= 3 — level 2 is routine noise."""
     state.upsert_source(_sample_source())

@@ -225,6 +225,7 @@ def _insert_source_via_state(
     )
 
 
+@freeze_time("2026-04-19 10:00:00")
 async def test_fetch_due_sources_inserts_items(
     state: State, httpx_mock: HTTPXMock, fixtures_dir: Path
 ) -> None:
