@@ -138,22 +138,50 @@ async def _run_fetch_score_notify(
     diagnosis painful (a 4 h apparent gap turned out to be 'no items due').
     """
     t0 = time.monotonic()
-    logger.info("run start (pid=%d)", os.getpid())
+    pid = os.getpid()
+    logger.info("run start (pid=%d)", pid, extra={"event": "run_start", "pid": pid})
 
     results = await fetch_due_sources(state, category=category, source=source)
     n_inserted = sum(r.items_inserted for r in results)
-    logger.info("fetch phase: %d sources checked, %d new items", len(results), n_inserted)
+    logger.info(
+        "fetch phase: %d sources checked, %d new items",
+        len(results),
+        n_inserted,
+        extra={
+            "event": "fetch_phase_done",
+            "sources": len(results),
+            "new_items": n_inserted,
+        },
+    )
 
     agent = AgentClient()
     n_arxiv = await filter_pending_arxiv_items(state, agent=agent)
-    logger.info("filter phase: %d arxiv items processed", n_arxiv)
+    logger.info(
+        "filter phase: %d arxiv items processed",
+        n_arxiv,
+        extra={"event": "filter_phase_done", "processed": n_arxiv},
+    )
 
     notifier = Notifier()
     n_scored = await score_pending_items(state, agent=agent, notifier=notifier, limit=100)
     pending_after = state.count_pending_for_scoring()
-    logger.info("score phase: %d scored, %d still pending", n_scored, pending_after)
+    logger.info(
+        "score phase: %d scored, %d still pending",
+        n_scored,
+        pending_after,
+        extra={
+            "event": "score_phase_done",
+            "scored": n_scored,
+            "pending_after": pending_after,
+        },
+    )
 
-    logger.info("run end (%.1fs)", time.monotonic() - t0)
+    duration_s = round(time.monotonic() - t0, 2)
+    logger.info(
+        "run end (%.1fs)",
+        duration_s,
+        extra={"event": "run_end", "duration_s": duration_s},
+    )
     return results
 
 

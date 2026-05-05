@@ -17,19 +17,57 @@ MAX_LOG_BYTES = 10 * 1024 * 1024  # 10 MB before rotation
 LOG_BACKUP_COUNT = 4
 
 
+_RESERVED_LOG_FIELDS = frozenset(
+    {
+        "args",
+        "asctime",
+        "created",
+        "exc_info",
+        "exc_text",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "message",
+        "module",
+        "msecs",
+        "msg",
+        "name",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "thread",
+        "threadName",
+        "taskName",
+    }
+)
+
+
 class JsonlFormatter(logging.Formatter):
-    """One-JSON-per-line formatter; enables `grep`/`jq` analysis."""
+    """One-JSON-per-line formatter; enables `grep`/`jq` analysis.
+
+    Standard fields (ts, level, logger, message) are always emitted. Any
+    `extra={...}` kwargs passed to logger.info/etc. are merged into the same
+    JSON object — internal LogRecord attributes (filename, lineno, threadName,
+    …) are filtered out so the output stays a clean event stream.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
-        payload = {
+        payload: dict[str, object] = {
             "ts": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
         }
+        for key, val in record.__dict__.items():
+            if key not in _RESERVED_LOG_FIELDS:
+                payload[key] = val
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=False)
+        return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 def _utc_time_format(dt: datetime) -> str:

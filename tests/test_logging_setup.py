@@ -69,3 +69,38 @@ def test_configure_logging_attaches_utc_time_format_to_rich_handler(
     rich = next(h for h in logging.getLogger().handlers if isinstance(h, RichHandler))
     fmt = rich._log_render.time_format
     assert fmt is logging_setup._utc_time_format
+
+
+def test_jsonl_formatter_passes_extra_fields_through(temp_log_dir: Path) -> None:
+    """logger.info(..., extra={k: v}) must land as JSON keys in events.jsonl,
+    so downstream `jq`/SQL aggregation can group by event-kind and sum counts.
+    """
+    logging_setup.configure_logging()
+    logger = logging.getLogger("test.structured")
+    logger.info(
+        "score phase done",
+        extra={"event": "score_phase_done", "scored": 17, "pending_after": 3},
+    )
+    line = (temp_log_dir / "events.jsonl").read_text().strip().split("\n")[-1]
+    record = json.loads(line)
+    assert record["event"] == "score_phase_done"
+    assert record["scored"] == 17
+    assert record["pending_after"] == 3
+    # Standard fields still present
+    assert record["level"] == "INFO"
+    assert record["message"] == "score phase done"
+
+
+def test_jsonl_formatter_does_not_leak_internal_logrecord_fields(
+    temp_log_dir: Path,
+) -> None:
+    """Internal LogRecord attributes (filename, lineno, threadName, …) must not
+    pollute the JSONL output — only explicit `extra=` fields plus our chosen
+    standard set are exposed.
+    """
+    logging_setup.configure_logging()
+    logging.getLogger("test.no_leak").info("plain")
+    line = (temp_log_dir / "events.jsonl").read_text().strip().split("\n")[-1]
+    record = json.loads(line)
+    for forbidden in ("filename", "lineno", "threadName", "process", "module"):
+        assert forbidden not in record

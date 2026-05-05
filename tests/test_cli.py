@@ -141,3 +141,34 @@ async def test_run_fetch_score_notify_score_log_includes_pending_count(
     ]
     assert score_msgs, "no score phase log emitted"
     assert "pending" in score_msgs[0]
+
+
+async def test_run_fetch_score_notify_lifecycle_logs_carry_event_kind(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    """Lifecycle log records carry an `event` attribute (and matching counts)
+    so events.jsonl can be aggregated later — e.g. how often did scoring fall
+    behind, average pending-after by hour, etc.
+    """
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+
+    monkeypatch.setattr("newsroom.cli.AgentClient", lambda *a, **kw: AsyncMock())
+    monkeypatch.setattr("newsroom.cli.Notifier", lambda *a, **kw: AsyncMock())
+
+    with caplog.at_level(logging.INFO, logger="newsroom.cli"):
+        await _run_fetch_score_notify(state, category=None, source=None)
+
+    events = [getattr(r, "event", None) for r in caplog.records if r.name == "newsroom.cli"]
+    assert "run_start" in events
+    assert "fetch_phase_done" in events
+    assert "filter_phase_done" in events
+    assert "score_phase_done" in events
+    assert "run_end" in events
+
+    score = next(r for r in caplog.records if getattr(r, "event", None) == "score_phase_done")
+    assert hasattr(score, "scored")
+    assert hasattr(score, "pending_after")
+
+    end = next(r for r in caplog.records if getattr(r, "event", None) == "run_end")
+    assert hasattr(end, "duration_s")
