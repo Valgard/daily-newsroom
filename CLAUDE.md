@@ -51,6 +51,15 @@ refactor before Phase-2 scope grows.
   `missed_slot` marker to state; a dedicated `newsroom digest-catchup` command
   (or the regular `digest` command itself) consumes markers.
 
+- **Digester calls `Notifier.notify_digest_ready()` directly after slot finalization**
+  (`digester.py::generate_digest`, optional injected `notifier` param). Same
+  invariant violation class as the catchup deferral above. Implements spec
+  §4.4 step 10 — a notification is fired once per finalized non-empty digest.
+  Race-safe via the existing `claim_digest_slot` mechanism (only the slot
+  winner reaches the notify call). Phase-2 refactor: replace the direct call
+  with a `digest_events` table that a dedicated notifier process consumes;
+  fold this together with the catchup-deferral refactor into one change.
+
 ## Development Conventions
 
 - Python 3.12, `uv` for dependency management (never edit pyproject.toml by hand for deps).
