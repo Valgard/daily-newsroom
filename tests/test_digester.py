@@ -13,6 +13,7 @@ from newsroom.digester import (
     format_items_for_prompt,
     generate_digest,
 )
+from newsroom.notifier import Notifier
 from newsroom.state import State
 
 
@@ -333,3 +334,160 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
     assert "New evening body." in body
     # Exactly one '## Abend-Digest' header
     assert body.count("## Abend-Digest") == 1
+
+
+# ── digest-ready notification (spec §4.4 step 10) ─────────────────────
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_notifies_when_items_present(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """Successful non-empty digest fires exactly one notify_digest_ready call."""
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# News-Digest 19. April 2026 (Morgen)\n\nbody"
+    notify_send = AsyncMock()
+    notifier = Notifier(send_fn=notify_send)
+
+    out = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+    )
+
+    notify_send.assert_awaited_once()
+    kwargs = notify_send.call_args.kwargs
+    assert kwargs["title"] == "Newsroom"
+    assert kwargs["message"] == "Morgen-Digest bereit (3 Items)"
+    assert kwargs["url"] == str(out)
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_silent_on_empty_slot(state: State, tmp_path: Path) -> None:
+    """Empty digest (no scored items in window) does NOT notify."""
+    mock_agent = AsyncMock()
+    notify_send = AsyncMock()
+    notifier = Notifier(send_fn=notify_send)
+
+    await generate_digest(
+        state=state,  # empty fixture from conftest
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+    )
+
+    notify_send.assert_not_awaited()
+    # File-Placeholder is still written
+    assert (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").exists()
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_no_notify_on_idempotent_skip(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """Second call without --force returns early and does NOT notify a second time."""
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# Body"
+    notify_send = AsyncMock()
+    notifier = Notifier(send_fn=notify_send)
+
+    # First call: real digest, real notify
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+    )
+    assert notify_send.await_count == 1
+
+    # Second call: idempotent skip — must NOT increment
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+    )
+    assert notify_send.await_count == 1  # unchanged
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_no_notify_on_race_loser(
+    populated_state: State,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When claim_digest_slot returns False (another process won the race),
+    generate_digest must return early WITHOUT calling notify."""
+    monkeypatch.setattr(populated_state, "claim_digest_slot", lambda **_kw: False)
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# Should never be produced"
+    notify_send = AsyncMock()
+    notifier = Notifier(send_fn=notify_send)
+
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+    )
+    mock_agent.ask.assert_not_called()
+    notify_send.assert_not_awaited()
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_force_regen_notifies_again(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """--force regeneration fires another notify_digest_ready."""
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# Body"
+    notify_send = AsyncMock()
+    notifier = Notifier(send_fn=notify_send)
+
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+    )
+    assert notify_send.await_count == 1
+
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+        force=True,
+    )
+    assert notify_send.await_count == 2  # noqa: PLR2004
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_no_notifier_works(populated_state: State, tmp_path: Path) -> None:
+    """Omitting the notifier param (default None) is allowed and does not crash."""
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# Body"
+
+    out = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    assert out.exists()

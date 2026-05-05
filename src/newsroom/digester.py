@@ -7,9 +7,13 @@ from collections import defaultdict
 from datetime import date as _date
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from newsroom.agent_client import AgentClient
+
+if TYPE_CHECKING:
+    from newsroom.notifier import Notifier
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +113,7 @@ async def generate_digest(
     summaries_dir: Path | None = None,
     agent: AgentClient | None = None,
     force: bool = False,
+    notifier: Notifier | None = None,
 ) -> Path:
     """Generate digest for the given slot+date. Returns path of written file."""
     if agent is None:
@@ -188,6 +193,12 @@ async def generate_digest(
         file_path=str(target_file),
         item_count=len(items),
     )
+    if notifier is not None:
+        await notifier.notify_digest_ready(
+            slot=slot,
+            item_count=len(items),
+            file_path=target_file,
+        )
     return target_file
 
 
