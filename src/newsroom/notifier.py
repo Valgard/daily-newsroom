@@ -126,3 +126,24 @@ class Notifier:
             state.mark_item_notified(item_id=item["id"])
         except Exception as e:  # noqa: BLE001 — per-notification failures shouldn't abort batch
             logger.warning("notification send failed for item %s: %s", item["id"], e)
+
+    async def notify_digest_ready(
+        self,
+        *,
+        slot: str,
+        item_count: int,
+        file_path: object,
+    ) -> None:
+        """System-Notification bei fertigem Digest.
+
+        Anders als `maybe_notify`: keine Threshold-, Quiet-Hour- oder Bundling-Logik.
+        Digests sind System-Events, keine Item-Pushes — selten genug (max 2/Tag),
+        und ein gewünschtes Resultat-Signal.
+        """
+        label = "Morgen-Digest" if slot == "morning" else "Abend-Digest"
+        title = "Newsroom"
+        message = f"{label} bereit ({item_count} Items)"
+        try:
+            await self._send(title=title, message=message, url=str(file_path))
+        except Exception as e:  # noqa: BLE001 — best-effort; never abort the digest
+            logger.warning("digest notification send failed: %s", e)

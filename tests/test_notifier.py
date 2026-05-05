@@ -1,7 +1,9 @@
 """Tests for the notifier module."""
 
+import logging
 from unittest.mock import AsyncMock
 
+import pytest
 from freezegun import freeze_time
 
 from newsroom.config import Source
@@ -168,3 +170,53 @@ async def test_notifier_pushes_again_after_15min_window(state: State) -> None:
     with freeze_time("2026-04-19 10:16:00"):
         await notifier.maybe_notify(row2, state)
     assert send_mock.await_count == 2  # noqa: PLR2004
+
+
+# ── digest-ready notification (spec §4.4 step 10) ─────────────────────
+
+
+async def test_notify_digest_ready_morning_format() -> None:
+    """Morning slot produces 'Morgen-Digest bereit (N Items)' message."""
+    send_mock = AsyncMock()
+    notifier = Notifier(send_fn=send_mock)
+    await notifier.notify_digest_ready(
+        slot="morning",
+        item_count=20,
+        file_path="/tmp/2026-04-19.md",
+    )
+    send_mock.assert_awaited_once()
+    kwargs = send_mock.call_args.kwargs
+    assert kwargs["title"] == "Newsroom"
+    assert kwargs["message"] == "Morgen-Digest bereit (20 Items)"
+    assert kwargs["url"] == "/tmp/2026-04-19.md"
+
+
+async def test_notify_digest_ready_evening_format() -> None:
+    """Evening slot produces 'Abend-Digest bereit (N Items)' message."""
+    send_mock = AsyncMock()
+    notifier = Notifier(send_fn=send_mock)
+    await notifier.notify_digest_ready(
+        slot="evening",
+        item_count=14,
+        file_path="/tmp/2026-04-19.md",
+    )
+    send_mock.assert_awaited_once()
+    assert send_mock.call_args.kwargs["message"] == "Abend-Digest bereit (14 Items)"
+
+
+async def test_notify_digest_ready_send_failure_swallowed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """If the send_fn raises, notify_digest_ready logs a warning and returns normally."""
+
+    async def raising_send(**_kwargs: object) -> None:
+        raise RuntimeError("pync down")
+
+    notifier = Notifier(send_fn=raising_send)
+    with caplog.at_level(logging.WARNING, logger="newsroom.notifier"):
+        await notifier.notify_digest_ready(
+            slot="morning",
+            item_count=1,
+            file_path="/tmp/x.md",
+        )
+    assert any("digest notification send failed" in rec.message for rec in caplog.records)
