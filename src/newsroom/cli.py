@@ -174,7 +174,14 @@ def _maybe_run_digest_catchup(state: State) -> None:
     for slot in ("morning", "evening"):
         if _is_in_catchup_window(now.hour, slot) and state.get_digest(today, slot) is None:
             logger.info("Digest-catchup: generating missed %s digest for %s", slot, today)
-            asyncio.run(generate_digest(state=state, slot=slot, date=now.date()))
+            asyncio.run(
+                generate_digest(
+                    state=state,
+                    slot=slot,
+                    date=now.date(),
+                    notifier=Notifier(),
+                )
+            )
 
 
 @app.command()
@@ -219,7 +226,15 @@ def digest(
         items = state.list_items_for_digest(since_iso=cutoff)
         console.print(f"Would generate {slot} digest for {date} with {len(items)} items")
         return
-    path = asyncio.run(generate_digest(state=state, slot=slot, date=date, force=force))
+    path = asyncio.run(
+        generate_digest(
+            state=state,
+            slot=slot,
+            date=date,
+            force=force,
+            notifier=Notifier(),
+        )
+    )
     console.print(f"✓ Digest written: {path}")
 
 
