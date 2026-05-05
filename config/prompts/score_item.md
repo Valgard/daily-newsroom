@@ -21,7 +21,14 @@ You are rating the importance of a single news item for a reader who follows AI/
   - Examples: "KV-cache tutorial", "Introducing SynthID-Text", "Small LLM benchmark survey", "Welcome PaliGemma 2", "<unknown-university-lab>/12B-instruct released" (credible-scale open-weights from non-frontier org → Level 3, not 2)
   - Most HuggingFace, most curated-newsletter, most tutorial content lands here
 
-- **2 — Minor (~60%, default):** Routine updates, incremental improvements, niche topics, version bumps without user-visible changes, sponsored content, reposts. When uncertain between 2 and 3, pick 2.
+- **2 — Minor (~60%, default):** Routine updates, incremental improvements, niche topics, version bumps without user-visible changes, sponsored content, reposts. **Specifically lands here regardless of source quality:**
+  - **Commentary / hot-takes / recaps** of already-announced releases (the announcement itself may be Level 4; posts *about* the release are Level 2 unless they add substantive new analysis or independent evaluation).
+  - **Tutorials, how-tos, explainers** about existing models or features (even when published by frontier labs — being from Anthropic doesn't promote a how-to to Level 3).
+  - **Library version bumps, bugfix releases, minor patches** without user-visible new capabilities.
+  - **Fine-tunes, quantizations, repackagings** of existing models when from non-frontier orgs.
+  - **Vendor marketing posts** pitching an already-shipped product without introducing new capabilities.
+
+  When uncertain between 2 and 3, pick 2 — Level 3 requires *new* substantive content of its own, not just being well-written.
 
 - **1 — Trivia (~15%):** Off-topic, promotional-only, dupes, listicles, low-effort aggregators, non-AI content that slipped in.
 
