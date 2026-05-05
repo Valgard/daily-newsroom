@@ -196,6 +196,7 @@ Append to `tests/test_digester.py` (after `test_generate_digest_force_evening_re
 # ── digest-ready notification (spec §4.4 step 10) ─────────────────────
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_notifies_when_items_present(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -233,6 +234,7 @@ Expected: FAIL with `TypeError: generate_digest() got an unexpected keyword argu
 Append to `tests/test_digester.py`:
 
 ```python
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_silent_on_empty_slot(
     state: State, tmp_path: Path
 ) -> None:
@@ -267,6 +269,7 @@ Expected: FAIL with `TypeError: ... unexpected keyword argument 'notifier'`.
 Append to `tests/test_digester.py`:
 
 ```python
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_no_notify_on_idempotent_skip(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -311,6 +314,7 @@ Expected: FAIL with `TypeError: ... unexpected keyword argument 'notifier'`.
 Append to `tests/test_digester.py`:
 
 ```python
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_no_notify_on_race_loser(
     populated_state: State,
     tmp_path: Path,
@@ -350,6 +354,7 @@ Expected: FAIL with `TypeError: ... unexpected keyword argument 'notifier'`.
 Append to `tests/test_digester.py`:
 
 ```python
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_force_regen_notifies_again(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -393,6 +398,7 @@ Expected: FAIL with `TypeError: ... unexpected keyword argument 'notifier'`.
 Append to `tests/test_digester.py`:
 
 ```python
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_no_notifier_works(
     populated_state: State, tmp_path: Path
 ) -> None:
