@@ -24,8 +24,9 @@ async def score_pending_items(
         agent = AgentClient()
 
     pending = state.list_items_for_scoring(limit=limit)
+    total = len(pending)
     scored = 0
-    for item in pending:
+    for processed, item in enumerate(pending, start=1):
         try:
             result = await agent.ask(
                 prompt_name="score_item",
@@ -57,4 +58,9 @@ async def score_pending_items(
                 await notifier.maybe_notify(updated, state)
         except Exception as e:  # noqa: BLE001 — broad: per-item failures shouldn't abort the batch
             logger.warning("scoring failed for item %s: %s", item["id"], e)
+        # Live throughput heartbeat every 10 items. Suppressed at the final
+        # boundary because cli.py's "score phase: ... scored, ... pending" line
+        # is the canonical end-of-run summary.
+        if processed % 10 == 0 and processed < total:
+            logger.info("score progress: %d/%d", processed, total)
     return scored

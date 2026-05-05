@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -97,3 +98,48 @@ async def test_filter_logs_and_continues_on_agent_error(state_with_arxiv_item: S
     assert count == 0
     row = state_with_arxiv_item.connection().execute("SELECT status FROM items").fetchone()
     assert row["status"] == "new"  # item left for retry
+
+
+async def test_arxiv_filter_emits_progress_heartbeat_every_10_items(tmp_path, caplog) -> None:
+    """Symmetric to scorer heartbeats: arxiv-filter is the *first* place a
+    morning burst hits, so live progress is just as important here.
+    """
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    state.upsert_source(
+        Source(
+            name="arxiv-cs-lg",
+            category="ai",
+            subcategory="arxiv",
+            url="https://arxiv.org/rss/cs.LG",
+            feed_type="rss",
+            interval_seconds=86400,
+            enabled=True,
+        )
+    )
+    src_id = state.get_source_by_name("arxiv-cs-lg")["id"]
+    for i in range(25):
+        state.insert_item(
+            source_id=src_id,
+            item_hash=f"a-{i}",
+            url=f"https://arxiv.org/abs/{i}",
+            title=f"Paper {i}",
+            author=None,
+            published_at=None,
+            raw_summary=None,
+            category="ai",
+        )
+
+    mock_client = AsyncMock()
+    mock_client.ask.return_value = {"relevant": True}
+    with caplog.at_level(logging.INFO, logger="newsroom.filter_arxiv"):
+        await filter_pending_arxiv_items(state, agent=mock_client)
+
+    progress = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "newsroom.filter_arxiv" and "progress" in r.getMessage().lower()
+    ]
+    assert len(progress) == 2
+    assert "10/25" in progress[0]
+    assert "20/25" in progress[1]

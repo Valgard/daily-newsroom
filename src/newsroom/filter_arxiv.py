@@ -14,9 +14,10 @@ async def filter_pending_arxiv_items(state, agent: AgentClient | None = None) ->
     if agent is None:
         agent = AgentClient()
     arxiv_items = state.list_pending_arxiv_items()
+    total = len(arxiv_items)
 
     processed = 0
-    for item in arxiv_items:
+    for seen, item in enumerate(arxiv_items, start=1):
         try:
             result = await agent.ask(
                 prompt_name="filter_arxiv",
@@ -33,4 +34,8 @@ async def filter_pending_arxiv_items(state, agent: AgentClient | None = None) ->
         except Exception as e:  # noqa: BLE001 — broad safety: per-item failures (including ParseError) shouldn't abort the batch
             logger.warning("arxiv filter failed for item %s: %s", item["id"], e)
             # Leave item in 'new' status → will retry next cycle
+        # Live throughput heartbeat every 10 items; final boundary is summarized
+        # by cli.py's "filter phase: ... arxiv items processed" line.
+        if seen % 10 == 0 and seen < total:
+            logger.info("filter progress: %d/%d", seen, total)
     return processed
