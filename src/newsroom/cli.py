@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
@@ -129,12 +130,30 @@ async def _run_fetch_score_notify(
     category: str | None,
     source: str | None,
 ):
-    """Orchestrate fetch → arxiv-filter → score → notify."""
+    """Orchestrate fetch → arxiv-filter → score → notify.
+
+    Each phase emits an INFO-level lifecycle marker, even when there is nothing
+    to do — a 'silent normal idle' run is otherwise indistinguishable from a
+    'crashed mid-flight' run, which is what made the 2026-05-05 backlog
+    diagnosis painful (a 4 h apparent gap turned out to be 'no items due').
+    """
+    t0 = time.monotonic()
+    logger.info("run start (pid=%d)", os.getpid())
+
     results = await fetch_due_sources(state, category=category, source=source)
+    n_inserted = sum(r.items_inserted for r in results)
+    logger.info("fetch phase: %d sources checked, %d new items", len(results), n_inserted)
+
     agent = AgentClient()
-    await filter_pending_arxiv_items(state, agent=agent)
+    n_arxiv = await filter_pending_arxiv_items(state, agent=agent)
+    logger.info("filter phase: %d arxiv items processed", n_arxiv)
+
     notifier = Notifier()
-    await score_pending_items(state, agent=agent, notifier=notifier, limit=100)
+    n_scored = await score_pending_items(state, agent=agent, notifier=notifier, limit=100)
+    pending_after = state.count_pending_for_scoring()
+    logger.info("score phase: %d scored, %d still pending", n_scored, pending_after)
+
+    logger.info("run end (%.1fs)", time.monotonic() - t0)
     return results
 
 

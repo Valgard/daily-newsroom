@@ -267,6 +267,19 @@ class State:
             ).fetchall()
         )
 
+    def count_pending_for_scoring(self) -> int:
+        """Cheap count of items the scorer would pick up (no LIMIT, no JOIN).
+
+        Mirrors the predicate of list_items_for_scoring exactly so the two
+        always agree. Used by lifecycle logging to surface backlog size at
+        run end.
+        """
+        conn = self.connection()
+        return conn.execute(
+            "SELECT COUNT(*) FROM items "
+            "WHERE status IN ('new', 'filtered_in') AND notified_at IS NULL"
+        ).fetchone()[0]
+
     def list_items_for_scoring(self, limit: int = 100) -> list[sqlite3.Row]:
         """Return items with status 'new' OR 'filtered_in' and no `notified_at`.
 

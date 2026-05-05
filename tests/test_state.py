@@ -609,3 +609,25 @@ def test_migration_4_normalizes_legacy_timestamps(tmp_path: Path) -> None:
     assert fa == "2026-04-20T06:09:42+00:00"
     assert ga == "2026-04-20T06:00:00+00:00"
     assert lea == "2026-04-20T06:30:00+00:00"
+
+
+def test_count_pending_for_scoring_matches_list_query(state: State) -> None:
+    """count_pending_for_scoring is the cheap counterpart to list_items_for_scoring;
+    counts must agree on the same {status IN ('new','filtered_in') AND notified_at IS NULL}
+    predicate. Used by lifecycle-logging in cli.py to surface backlog size after each run.
+    """
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T1"))
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T2"))
+    state.insert_item(**_sample_item_kwargs(src["id"], title="T3"))
+    # T2 → filtered_in (still in scoring queue)
+    t2 = next(r for r in state.list_items_by_status("new", limit=10) if r["title"] == "T2")
+    state.mark_item_arxiv_filter(item_id=t2["id"], relevant=True)
+    # T3 → notified out-of-band → must NOT be counted
+    t3 = next(r for r in state.list_items_by_status("new", limit=10) if r["title"] == "T3")
+    state.mark_item_notified(item_id=t3["id"], pushed=False)
+
+    assert state.count_pending_for_scoring() == 2  # T1 (new) + T2 (filtered_in)
+    # Symmetry: count and list agree
+    assert state.count_pending_for_scoring() == len(state.list_items_for_scoring(limit=100))
