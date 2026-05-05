@@ -527,3 +527,85 @@ def test_unmark_items_by_digest_label_clears_mark(state: State) -> None:
     # T1 (was evening-marked) → now NULL; T2 (morning-marked) → unchanged
     assert rows[0]["included_in_digest"] is None
     assert rows[1]["included_in_digest"] == "2026-04-19-morning"
+
+
+# ── Timestamp consistency: all operational stamps are ISO-8601 UTC with +00:00 ──
+# (Was inconsistent: fetched_at, generated_at, last_error_at used SQLite's
+#  datetime('now') — naive, no offset suffix — while scored_at / notified_at
+#  used Python's datetime.now(UTC).isoformat(). Lex-comparison and TZ-aware
+#  diagnostics demand consistency.)
+
+
+@freeze_time("2026-05-05 06:09:42", tz_offset=0)
+def test_insert_item_stamps_fetched_at_as_utc_iso8601(state: State) -> None:
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    state.insert_item(**_sample_item_kwargs(src["id"]))
+    fa = state.connection().execute("SELECT fetched_at FROM items").fetchone()["fetched_at"]
+    assert fa.startswith("2026-05-05T06:09:42")
+    assert fa.endswith("+00:00")
+
+
+@freeze_time("2026-05-05 06:09:42", tz_offset=0)
+def test_increment_source_error_stamps_iso8601_utc(state: State) -> None:
+    state.upsert_source(_sample_source())
+    state.increment_source_error("arxiv-cs-cl", "boom")
+    row = state.get_source_by_name("arxiv-cs-cl")
+    assert row["last_error_at"].startswith("2026-05-05T06:09:42")
+    assert row["last_error_at"].endswith("+00:00")
+
+
+@freeze_time("2026-05-05 06:09:42", tz_offset=0)
+def test_insert_digest_stamps_generated_at_iso8601_utc(state: State) -> None:
+    state.insert_digest(
+        date="2026-05-05", slot="morning", file_path="/tmp/x.md", item_count=1, model="m"
+    )
+    row = (
+        state.connection()
+        .execute("SELECT generated_at FROM digests WHERE date='2026-05-05' AND slot='morning'")
+        .fetchone()
+    )
+    assert row["generated_at"].startswith("2026-05-05T06:09:42")
+    assert row["generated_at"].endswith("+00:00")
+
+
+def test_migration_4_normalizes_legacy_timestamps(tmp_path: Path) -> None:
+    """Migration 4 converts pre-existing 'YYYY-MM-DD HH:MM:SS' values to
+    'YYYY-MM-DDTHH:MM:SS+00:00' so lex-sort and TZ-aware comparisons work.
+
+    Strategy: run ensure_schema (applies all migrations including 4), then
+    forcibly DOWNGRADE one row to the legacy format and roll schema_version
+    back to 3, then re-run ensure_schema → migration 4 should re-run and
+    normalize the value.
+    """
+    db = tmp_path / "legacy.db"
+    s = State(db)
+    s.ensure_schema()
+    src = _sample_source()
+    s.upsert_source(src)
+    src_row = s.get_source_by_name(src.name)
+    # Insert via raw SQL with legacy fetched_at format (the old datetime('now') shape)
+    conn = s.connection()
+    conn.execute(
+        "INSERT INTO items (source_id, item_hash, url, title, category, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (src_row["id"], "h-legacy", "https://x/y", "T", "ai", "2026-04-20 06:09:42"),
+    )
+    # Also seed legacy generated_at in digests + last_error_at on a source
+    conn.execute(
+        "INSERT INTO digests (date, slot, file_path, item_count, model, generated_at) "
+        "VALUES ('2026-04-20', 'morning', '/p.md', 1, 'm', '2026-04-20 06:00:00')"
+    )
+    conn.execute(
+        "UPDATE sources SET last_error_at = '2026-04-20 06:30:00' WHERE name = ?",
+        (src.name,),
+    )
+    # Roll back migration 4 so it re-fires
+    conn.execute("DELETE FROM schema_version WHERE version = 4")
+    s.ensure_schema()
+    fa = conn.execute("SELECT fetched_at FROM items WHERE item_hash='h-legacy'").fetchone()[0]
+    ga = conn.execute("SELECT generated_at FROM digests WHERE date='2026-04-20'").fetchone()[0]
+    lea = conn.execute("SELECT last_error_at FROM sources WHERE name=?", (src.name,)).fetchone()[0]
+    assert fa == "2026-04-20T06:09:42+00:00"
+    assert ga == "2026-04-20T06:00:00+00:00"
+    assert lea == "2026-04-20T06:30:00+00:00"

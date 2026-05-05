@@ -2,9 +2,12 @@
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
+from rich.logging import RichHandler
 
 from newsroom import logging_setup
 
@@ -43,3 +46,26 @@ def test_configure_logging_is_idempotent(temp_log_dir: Path) -> None:
     logging_setup.configure_logging()
     handlers_after_second = len(logging.getLogger().handlers)
     assert handlers_after_first == handlers_after_second
+
+
+def test_utc_time_format_converts_local_to_utc() -> None:
+    """RichHandler's time-format helper renders UTC, not local-time, so fetch.log
+    matches DB and events.jsonl. Without this, a CEST 08:09 entry was stored as
+    UTC 06:09 in DB — making cross-source diagnostics misleading.
+    """
+    cest = ZoneInfo("Europe/Berlin")
+    sample = datetime(2026, 5, 5, 8, 9, 42, tzinfo=cest)  # CEST = UTC+02:00
+    rendered = logging_setup._utc_time_format(sample)
+    assert "06:09:42" in str(rendered)
+    assert "08:09" not in str(rendered)
+
+
+def test_configure_logging_attaches_utc_time_format_to_rich_handler(
+    temp_log_dir: Path,
+) -> None:
+    """The configured RichHandler must use _utc_time_format, not the default
+    locale-aware '[%x %X]' which yields local time."""
+    logging_setup.configure_logging()
+    rich = next(h for h in logging.getLogger().handlers if isinstance(h, RichHandler))
+    fmt = rich._log_render.time_format
+    assert fmt is logging_setup._utc_time_format

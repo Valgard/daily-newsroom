@@ -32,6 +32,17 @@ class JsonlFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
+def _utc_time_format(dt: datetime) -> str:
+    """Render Rich log timestamps in UTC so fetch.log matches DB / events.jsonl.
+
+    Rich passes a timezone-aware datetime in the local zone; we coerce to UTC
+    before formatting. Without this, fetch.log shows '08:09 CEST' while the same
+    event lands as '06:09 UTC' in the DB — a 2 h gap that makes cross-source
+    diagnostics misleading.
+    """
+    return dt.astimezone(UTC).strftime("[%Y-%m-%d %H:%M:%S]")
+
+
 def configure_logging(*, verbose: bool = False) -> None:
     """Set up Rich stdout + JSONL file handlers on the root logger. Idempotent."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -48,6 +59,7 @@ def configure_logging(*, verbose: bool = False) -> None:
         rich_tracebacks=True,
         show_path=False,
         show_time=True,
+        log_time_format=_utc_time_format,
     )
     rich_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
     root.addHandler(rich_handler)

@@ -95,6 +95,19 @@ MIGRATIONS: dict[int, list[str]] = {
         "UPDATE items SET push_sent = 1 "
         "WHERE notified_at IS NOT NULL AND importance IS NOT NULL AND importance >= 4",
     ],
+    4: [
+        # Normalize legacy SQLite-default timestamps ('YYYY-MM-DD HH:MM:SS', no TZ)
+        # to ISO-8601 UTC ('YYYY-MM-DDTHH:MM:SS+00:00'). Matches scored_at /
+        # notified_at format already produced by Python. Required for lex-correct
+        # ORDER BY across mixed legacy + new rows; also unblocks TZ-aware analysis.
+        "UPDATE items SET fetched_at = REPLACE(fetched_at, ' ', 'T') || '+00:00' "
+        "WHERE fetched_at NOT LIKE '%+%' AND fetched_at NOT LIKE '%Z'",
+        "UPDATE digests SET generated_at = REPLACE(generated_at, ' ', 'T') || '+00:00' "
+        "WHERE generated_at NOT LIKE '%+%' AND generated_at NOT LIKE '%Z'",
+        "UPDATE sources SET last_error_at = REPLACE(last_error_at, ' ', 'T') || '+00:00' "
+        "WHERE last_error_at IS NOT NULL "
+        "  AND last_error_at NOT LIKE '%+%' AND last_error_at NOT LIKE '%Z'",
+    ],
 }
 
 
@@ -215,9 +228,9 @@ class State:
             """UPDATE sources SET
                 consecutive_errors = consecutive_errors + 1,
                 last_error = ?,
-                last_error_at = datetime('now')
+                last_error_at = ?
              WHERE name = ?""",
-            (error, name),
+            (error, datetime.now(UTC).isoformat(), name),
         )
 
     def reset_source_errors(self, name: str) -> None:
@@ -301,14 +314,30 @@ class State:
         raw_summary: str | None,
         category: str,
     ) -> bool:
-        """Insert item. Returns True if inserted, False if duplicate hash."""
+        """Insert item. Returns True if inserted, False if duplicate hash.
+
+        fetched_at is set explicitly via Python so the format matches
+        scored_at / notified_at (ISO-8601 with +00:00). The schema default
+        datetime('now') remains as a defensive backstop only.
+        """
         conn = self.connection()
         cur = conn.execute(
             """INSERT INTO items
-                (source_id, item_hash, url, title, author, published_at, raw_summary, category)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (source_id, item_hash, url, title, author, published_at,
+                 raw_summary, category, fetched_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(item_hash) DO NOTHING""",
-            (source_id, item_hash, url, title, author, published_at, raw_summary, category),
+            (
+                source_id,
+                item_hash,
+                url,
+                title,
+                author,
+                published_at,
+                raw_summary,
+                category,
+                datetime.now(UTC).isoformat(),
+            ),
         )
         return cur.rowcount > 0
 
@@ -438,12 +467,18 @@ class State:
         item_count: int,
         model: str,
     ) -> None:
-        """Insert a complete digest row. Race-safe: duplicate (date, slot) silently no-ops."""
+        """Insert a complete digest row. Race-safe: duplicate (date, slot) silently no-ops.
+
+        generated_at is stamped explicitly via Python so the format matches the
+        rest of our timestamps (ISO-8601 with +00:00). Schema default kept as
+        defensive backstop.
+        """
         conn = self.connection()
         conn.execute(
             "INSERT OR IGNORE INTO digests "
-            "(date, slot, file_path, item_count, model) VALUES (?, ?, ?, ?, ?)",
-            (date, slot, file_path, item_count, model),
+            "(date, slot, file_path, item_count, model, generated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (date, slot, file_path, item_count, model, datetime.now(UTC).isoformat()),
         )
 
     def claim_digest_slot(self, *, date: str, slot: str, model: str) -> bool:
@@ -456,8 +491,9 @@ class State:
         conn = self.connection()
         cursor = conn.execute(
             "INSERT OR IGNORE INTO digests "
-            "(date, slot, file_path, item_count, model) VALUES (?, ?, '', 0, ?)",
-            (date, slot, model),
+            "(date, slot, file_path, item_count, model, generated_at) "
+            "VALUES (?, ?, '', 0, ?, ?)",
+            (date, slot, model, datetime.now(UTC).isoformat()),
         )
         return cursor.rowcount > 0
 
