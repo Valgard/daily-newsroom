@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -132,18 +133,23 @@ class Notifier:
         *,
         slot: str,
         item_count: int,
-        file_path: object,
+        file_path: Path | str,
     ) -> None:
         """System-Notification bei fertigem Digest.
 
         Anders als `maybe_notify`: keine Threshold-, Quiet-Hour- oder Bundling-Logik.
         Digests sind System-Events, keine Item-Pushes — selten genug (max 2/Tag),
         und ein gewünschtes Resultat-Signal.
+
+        `file_path` wird als `file://`-URI an `terminal-notifier -open` übergeben,
+        damit ein Klick auf das Banner die MD-Datei im Default-Handler für `.md`
+        öffnet (Path muss absolut sein — `target_file` aus `digester` ist das).
         """
         label = "Morgen-Digest" if slot == "morning" else "Abend-Digest"
         title = "Newsroom"
         message = f"{label} bereit ({item_count} Items)"
+        url = Path(file_path).as_uri()
         try:
-            await self._send(title=title, message=message, url=str(file_path))
+            await self._send(title=title, message=message, url=url)
         except Exception as e:  # noqa: BLE001 — best-effort; never abort the digest
             logger.warning("digest notification send failed: %s", e)

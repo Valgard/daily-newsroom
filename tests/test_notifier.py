@@ -188,7 +188,7 @@ async def test_notify_digest_ready_morning_format() -> None:
     kwargs = send_mock.call_args.kwargs
     assert kwargs["title"] == "Newsroom"
     assert kwargs["message"] == "Morgen-Digest bereit (20 Items)"
-    assert kwargs["url"] == "/tmp/2026-04-19.md"
+    assert kwargs["url"] == "file:///tmp/2026-04-19.md"
 
 
 async def test_notify_digest_ready_evening_format() -> None:

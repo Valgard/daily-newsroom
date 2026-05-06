@@ -363,7 +363,7 @@ async def test_generate_digest_notifies_when_items_present(
     kwargs = notify_send.call_args.kwargs
     assert kwargs["title"] == "Newsroom"
     assert kwargs["message"] == "Morgen-Digest bereit (3 Items)"
-    assert kwargs["url"] == str(out)
+    assert kwargs["url"] == out.as_uri()
 
 
 @freeze_time("2026-04-19 22:30:00")
