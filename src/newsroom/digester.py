@@ -164,6 +164,10 @@ async def generate_digest(
             file_path=str(target_file),
             item_count=0,
         )
+        logger.info(
+            "digest finalized (empty)",
+            extra={"event": "digest_finalized", "slot": slot, "item_count": 0},
+        )
         return target_file
 
     items_md = format_items_for_prompt(items, summaries_dir=summaries_dir)
@@ -193,7 +197,19 @@ async def generate_digest(
         file_path=str(target_file),
         item_count=len(items),
     )
+    logger.info(
+        "digest finalized",
+        extra={"event": "digest_finalized", "slot": slot, "item_count": len(items)},
+    )
     if notifier is not None:
+        logger.info(
+            "digest notify dispatched",
+            extra={
+                "event": "digest_notify_dispatched",
+                "slot": slot,
+                "item_count": len(items),
+            },
+        )
         await notifier.notify_digest_ready(
             slot=slot,
             item_count=len(items),

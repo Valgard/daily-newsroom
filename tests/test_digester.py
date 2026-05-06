@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -491,3 +492,88 @@ async def test_generate_digest_no_notifier_works(populated_state: State, tmp_pat
         agent=mock_agent,
     )
     assert out.exists()
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_emits_digest_finalized_event(
+    populated_state: State, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Successful non-empty digest emits a `digest_finalized` lifecycle event so
+    events.jsonl can be aggregated by `jq` (matches the fetch/score/run pattern
+    introduced in commit 1443b61). Without this, a successful digest leaves no
+    trace in events.jsonl — the 2026-05-06 notification-diagnosis took 30 min
+    longer because the structured log was silent on the digest path.
+    """
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# Body"
+
+    with caplog.at_level(logging.INFO, logger="newsroom.digester"):
+        await generate_digest(
+            state=populated_state,
+            slot="morning",
+            date=datetime(2026, 4, 19).date(),
+            output_root=tmp_path / "news",
+            agent=mock_agent,
+        )
+
+    finalized = [r for r in caplog.records if getattr(r, "event", None) == "digest_finalized"]
+    assert len(finalized) == 1, f"expected one digest_finalized record, got {len(finalized)}"
+    assert finalized[0].slot == "morning"
+    assert finalized[0].item_count == 3
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_emits_digest_finalized_event_for_empty_slot(
+    state: State, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Empty slot finalization also emits `digest_finalized` (with item_count=0).
+    Both branches must be visible — otherwise an empty digest looks identical to
+    a crashed digest in events.jsonl.
+    """
+    mock_agent = AsyncMock()
+
+    with caplog.at_level(logging.INFO, logger="newsroom.digester"):
+        await generate_digest(
+            state=state,
+            slot="morning",
+            date=datetime(2026, 4, 19).date(),
+            output_root=tmp_path / "news",
+            agent=mock_agent,
+        )
+
+    finalized = [r for r in caplog.records if getattr(r, "event", None) == "digest_finalized"]
+    assert len(finalized) == 1
+    assert finalized[0].slot == "morning"
+    assert finalized[0].item_count == 0
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_emits_digest_notify_dispatched_event(
+    populated_state: State, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """When a notifier is injected and the digest is non-empty, the dispatch of
+    notify_digest_ready emits `digest_notify_dispatched`. This is what was
+    missing in the 2026-05-06 incident: there was no log line proving the notify
+    path even ran — diagnosis required reading code instead of grep'ing logs.
+    """
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = "# Body"
+    notify_send = AsyncMock()
+    notifier = Notifier(send_fn=notify_send)
+
+    with caplog.at_level(logging.INFO, logger="newsroom.digester"):
+        await generate_digest(
+            state=populated_state,
+            slot="morning",
+            date=datetime(2026, 4, 19).date(),
+            output_root=tmp_path / "news",
+            agent=mock_agent,
+            notifier=notifier,
+        )
+
+    dispatched = [
+        r for r in caplog.records if getattr(r, "event", None) == "digest_notify_dispatched"
+    ]
+    assert len(dispatched) == 1
+    assert dispatched[0].slot == "morning"
+    assert dispatched[0].item_count == 3
