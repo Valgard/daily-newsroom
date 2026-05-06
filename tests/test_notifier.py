@@ -30,9 +30,21 @@ def test_threshold_quiet_hours() -> None:
     assert compute_threshold_for_hour(HOUR_QUIET_2, category="ai") == 5
 
 
-def test_threshold_arxiv_never_pushes() -> None:
-    # arxiv subcategory should never push single items; effective threshold is impossible
-    assert compute_threshold_for_hour(HOUR_DAYTIME_1, subcategory="arxiv") >= 6
+def test_threshold_arxiv_pushes_only_at_imp5() -> None:
+    # arxiv: paradigm-shifting papers (imp=5) push; lower scores go via digest only.
+    # Constant across day and night — symmetric with the night quiet-hours threshold.
+    assert compute_threshold_for_hour(HOUR_DAYTIME_1, subcategory="arxiv") == 5
+    assert compute_threshold_for_hour(HOUR_QUIET_1, subcategory="arxiv") == 5
+
+
+def test_meets_threshold_arxiv_imp5_pushes() -> None:
+    item = {"importance": 5, "category": "ai"}
+    assert meets_threshold(item, hour=HOUR_DAYTIME_1, subcategory="arxiv")
+
+
+def test_meets_threshold_arxiv_imp4_blocked() -> None:
+    item = {"importance": 4, "category": "ai"}
+    assert not meets_threshold(item, hour=HOUR_DAYTIME_1, subcategory="arxiv")
 
 
 def test_meets_threshold_true() -> None:

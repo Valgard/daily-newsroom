@@ -22,7 +22,6 @@ QUIET_HOUR_START = 22
 QUIET_HOUR_END = 7
 THRESHOLD_QUIET = 5
 THRESHOLD_DAYTIME = 4
-THRESHOLD_NEVER = 99
 
 # Spec §4.3: suppress duplicate pushes in the same category within this window.
 BUNDLING_WINDOW_MINUTES = 15
@@ -39,9 +38,11 @@ def compute_threshold_for_hour(
     `category` is reserved for Phase 2 per-category overrides (e.g.
     weltgeschehen-breaking would lower the threshold); unused today.
     """
-    # arxiv sub-category: never single-push (only via digest)
+    # arxiv: only paradigm-shifting papers (imp=5) push; lower scores reach the reader
+    # via the digest only. Volume of substantive arxiv work is too high to interrupt
+    # at imp=4, but a genuine "GPT-4-beating open model" paper deserves a banner.
     if subcategory == "arxiv":
-        return THRESHOLD_NEVER
+        return THRESHOLD_QUIET
 
     quiet_hours = hour >= QUIET_HOUR_START or hour < QUIET_HOUR_END
     return THRESHOLD_QUIET if quiet_hours else THRESHOLD_DAYTIME
