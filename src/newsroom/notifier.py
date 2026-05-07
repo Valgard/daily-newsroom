@@ -18,6 +18,10 @@ TITLE_PREFIX = {
     "ai": "AI",
 }
 
+# Custom notification sound (file in ~/Library/Sounds/<NAME>.aiff).
+# Set to "default" to use the macOS system default.
+NOTIFICATION_SOUND = "newsroom-ping"
+
 QUIET_HOUR_START = 22
 QUIET_HOUR_END = 7
 THRESHOLD_QUIET = 5
@@ -65,7 +69,7 @@ def _send_with_pync(title: str, message: str, open_url: str | None = None) -> No
     except ImportError:
         logger.warning("pync not available; notification skipped")
         return
-    pync.notify(message, title=title, open=open_url or "")
+    pync.notify(message, title=title, open=open_url or "", sound=NOTIFICATION_SOUND)
 
 
 class Notifier:
