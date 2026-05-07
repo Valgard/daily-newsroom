@@ -18,7 +18,7 @@ Du schreibst den **Abend-Newsletter** für einen Leser, der einen Tagesabschluss
 **Output-Struktur:**
 
 ~~~markdown
-## Abend-Digest
+# News-Digest {{ date_de }} (Abend)
 
 ### Deutsche Headline
 
@@ -35,11 +35,11 @@ Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es releva
 
 **Regeln:**
 
-- **Start mit `## Abend-Digest`** — kein `# top-level header` (wird an die Morgen-Datei angehängt).
+- **Start mit `# News-Digest {{ date_de }} (Abend)`** — eigener H1-Header, symmetrisch zum Morgen-Digest. Wird an die Morgen-Datei mit `---`-Separator angehängt; das `---` gehört nicht in deinen Output.
 - **Pro Item:** `### Deutsche Headline`, ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, Meta-Zeile.
 - **relative-time in Meta-Zeile:** aus `published=...` und heutigem Datum ableiten. Heute → `heute 14:30`. Gestern → `gestern 09:15`. Älter → `19.04. 07:00`.
 - **Kein Preamble, kein Abschluss.** Nur Markdown-Content.
-- **Keine Zwischenüberschriften.** Items fließen als ein Strom direkt unter `## Abend-Digest` — keine `## …`-Sub-Kategorie-Header.
+- **Keine Zwischenüberschriften.** Items fließen als ein Strom direkt unter dem Top-Header — keine `## …`-Sub-Kategorie-Header.
 - **Reihenfolge:** Items strikt in der gegebenen Eingabe-Reihenfolge ausgeben — nicht umsortieren.
 - **Cross-Links:** bei `summary_path=...` die Meta-Zeile ergänzen: ` · 📄 [Tief-Zusammenfassung](path)`.
 - **Quote-Format:** nur wenn Original-Zitat Mehrwert bietet. Nicht erzwingen.

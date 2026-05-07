@@ -208,7 +208,7 @@ async def test_generate_digest_evening_appends(populated_state: State, tmp_path:
     (morning_dir / "2026-04-19.md").write_text("# Morgen Content\n")
 
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "## Abend-Digest\n\n- x"
+    mock_agent.ask.return_value = "# News-Digest 19. April 2026 (Abend)\n\n- x"
     await generate_digest(
         state=populated_state,
         slot="evening",
@@ -218,7 +218,7 @@ async def test_generate_digest_evening_appends(populated_state: State, tmp_path:
     )
     body = (morning_dir / "2026-04-19.md").read_text()
     assert "# Morgen Content" in body
-    assert "## Abend-Digest" in body
+    assert "# News-Digest 19. April 2026 (Abend)" in body
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -309,16 +309,17 @@ async def test_generate_digest_force_regenerates_existing(
 async def test_generate_digest_force_evening_replaces_previous_evening(
     populated_state: State, tmp_path: Path
 ) -> None:
-    """--force on evening must truncate the old '## Abend-Digest' section before append."""
+    """--force on evening must truncate the old '... (Abend)' section before append."""
     output_root = tmp_path / "news"
     morning_dir = output_root / "2026" / "04"
     morning_dir.mkdir(parents=True)
     (morning_dir / "2026-04-19.md").write_text(
-        "# News-Digest Morgen\n\nMorning body.\n\n---\n\n## Abend-Digest\n\nOld evening body.\n"
+        "# News-Digest 19. April 2026 (Morgen)\n\nMorning body.\n\n"
+        "---\n\n# News-Digest 19. April 2026 (Abend)\n\nOld evening body.\n"
     )
 
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "## Abend-Digest\n\nNew evening body.\n"
+    mock_agent.ask.return_value = "# News-Digest 19. April 2026 (Abend)\n\nNew evening body.\n"
 
     # Need to seed DB with matching existing digest + items so the force path activates
     populated_state.insert_digest(
@@ -344,8 +345,8 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
     # Old evening dropped, new evening present
     assert "Old evening body." not in body
     assert "New evening body." in body
-    # Exactly one '## Abend-Digest' header
-    assert body.count("## Abend-Digest") == 1
+    # Exactly one evening top-header
+    assert body.count("(Abend)") == 1
 
 
 # ── digest-ready notification (spec §4.4 step 10) ─────────────────────

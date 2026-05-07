@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date as _date
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,6 +26,19 @@ MORNING_START_HOUR = 5
 MORNING_END_HOUR = 12  # exclusive
 EVENING_START_HOUR = 16
 EVENING_END_HOUR = 24  # exclusive
+
+SLOT_LABEL_DE = {"morning": "Morgen", "evening": "Abend"}
+
+
+def _format_top_header(date: _date, slot: str) -> str:
+    """Canonical digest top-header: ``# News-Digest <date_de> (Morgen|Abend)``.
+
+    Single source of truth for the empty-digest and LLM-fallback code paths.
+    The digest_*.md prompts embed this exact format so Opus output stays
+    symmetric with the code-emitted fallbacks.
+    """
+    date_de = date.strftime("%-d. %B %Y")
+    return f"# News-Digest {date_de} ({SLOT_LABEL_DE[slot]})"
 
 
 class NoSlotError(Exception):
@@ -146,13 +160,11 @@ async def generate_digest(
 
     if not items:
         # No items → write/append placeholder, still finalize digest
+        top = _format_top_header(date, slot)
         if slot == "morning":
-            content = (
-                f"# News-Digest {date.strftime('%d.%m.%Y')} ({slot.capitalize()})\n\n"
-                "_Keine neuen Items seit dem letzten Digest._\n"
-            )
+            content = f"{top}\n\n_Keine neuen Items seit dem letzten Digest._\n"
         else:
-            content = "\n\n---\n\n## Abend-Digest\n\n_Keine neuen Items seit Morgen-Digest._\n"
+            content = f"\n\n---\n\n{top}\n\n_Keine neuen Items seit Morgen-Digest._\n"
         _write_digest_file(target_file, content, slot=slot, force=force)
         state.finalize_digest(
             date=date.isoformat(),
@@ -214,16 +226,28 @@ async def generate_digest(
     return target_file
 
 
-_EVENING_SECTION_MARKER = "## Abend-Digest"
+# Matches the canonical evening top-header line: '# News-Digest <date_de> (Abend)'.
+# Used to locate the evening section in an existing file for --force regeneration.
+# Morning header has '(Morgen)' so the two slots are unambiguously distinguishable.
+_EVENING_HEADER_RE = re.compile(r"^# News-Digest [^\n]*\(Abend\)", re.MULTILINE)
+
+
+def _find_evening_section_start(text: str) -> int:
+    """Index of the start of the LAST evening top-header line, or -1 if absent."""
+    last_idx = -1
+    for m in _EVENING_HEADER_RE.finditer(text):
+        last_idx = m.start()
+    return last_idx
 
 
 def _write_digest_file(path: Path, content: str, *, slot: str, force: bool = False) -> None:
     """Write or append digest content. Morning creates; evening appends.
 
     With `force=True` and an existing file, an evening regeneration truncates
-    the previous `## Abend-Digest` section before appending the new one, so
-    the morning section is preserved but the old evening is replaced instead
-    of duplicated. Morning regenerations always overwrite the whole file.
+    the previous evening section (located via `_find_evening_section_start`)
+    before appending the new one, so the morning section is preserved but the
+    old evening is replaced instead of duplicated. Morning regenerations
+    always overwrite the whole file.
     """
     body = content if content.endswith("\n") else content + "\n"
     if slot == "morning" or not path.exists():
@@ -232,10 +256,10 @@ def _write_digest_file(path: Path, content: str, *, slot: str, force: bool = Fal
 
     existing = path.read_text()
     if force:
-        # Drop everything from the last '## Abend-Digest' onward so a new
+        # Drop everything from the last evening header onward so a new
         # evening section takes its place. Also strip any trailing '---'
         # separator that belonged to the old evening.
-        idx = existing.rfind(_EVENING_SECTION_MARKER)
+        idx = _find_evening_section_start(existing)
         if idx >= 0:
             existing = existing[:idx].rstrip()
             # Strip a dangling horizontal rule left from the old separator
@@ -247,16 +271,12 @@ def _write_digest_file(path: Path, content: str, *, slot: str, force: bool = Fal
 
 def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: ANN001
     """Emergency digest: no LLM synthesis, just a structured list."""
-    if slot == "morning":
-        header = (
-            f"# News-Digest {date.strftime('%d.%m.%Y')} ({slot.capitalize()})\n\n"
-            "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)\n\n"
-        )
-    else:
-        header = (
-            "\n\n---\n\n## Abend-Digest\n\n"
-            "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)\n\n"
-        )
+    top = _format_top_header(date, slot)
+    prefix = "" if slot == "morning" else "\n\n---\n\n"
+    header = (
+        f"{prefix}{top}\n\n"
+        "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)\n\n"
+    )
 
     lines = [header]
     for item in items:
