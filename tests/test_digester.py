@@ -67,8 +67,10 @@ def test_determine_slot_returns_none_outside_windows() -> None:
 
 
 @freeze_time("2026-04-19 22:30:00")
-def test_format_items_for_prompt_groups_by_subcategory(populated_state: State) -> None:
-    # Add a second source with different subcategory
+def test_format_items_for_prompt_preserves_input_order(populated_state: State) -> None:
+    """Items must render flat in the given input order — no subcat grouping,
+    no re-sorting. Sort responsibility lives in SQL (`list_items_for_digest`).
+    """
     populated_state.upsert_source(
         Source(
             name="simon",
@@ -95,8 +97,17 @@ def test_format_items_for_prompt_groups_by_subcategory(populated_state: State) -
     populated_state.mark_item_scored(item_id=item_id, importance=4, reason="curated", model="haiku")
     items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
     formatted = format_items_for_prompt(items)
-    assert "lab" in formatted.lower() or "Labs" in formatted
-    assert "curated" in formatted.lower() or "Curated" in formatted
+
+    # Flat output: no `### lab` / `### curated` subcategory markers.
+    assert "### lab" not in formatted
+    assert "### curated" not in formatted
+
+    # Each input item appears exactly once, in the SQL-defined order
+    # (importance DESC, published_at DESC).
+    titles_in_order = [item["title"] for item in items]
+    positions = [formatted.find(t) for t in titles_in_order]
+    assert all(p >= 0 for p in positions), "every item title must be rendered"
+    assert positions == sorted(positions), "items must appear in input order"
 
 
 @freeze_time("2026-04-19 22:30:00")

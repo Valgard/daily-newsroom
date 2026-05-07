@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from datetime import date as _date
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -70,7 +69,11 @@ ITEM_BODY_MAX_CHARS = 1200
 
 
 def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  # noqa: ANN001
-    """Group items by subcategory and produce the markdown payload for the prompt.
+    """Render items as a flat markdown payload, in the given input order.
+
+    Items are expected to arrive pre-sorted from SQL (`importance DESC,
+    published_at DESC`); this function does not re-sort or re-group. The
+    digest prompt instructs Opus to emit items in the same order.
 
     Each item renders as:
         - [importance] title · source · published=iso · url=url · reason=reason
@@ -79,28 +82,21 @@ def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  #
     `published_at` is passed so the digest prompt can express relative time
     ("heute 14:30", "gestern", "vor 3h") without additional state injection.
     """
-    groups: dict[str, list] = defaultdict(list)
-    for item in items:
-        groups[item["source_subcategory"] or "other"].append(item)
-
     lines: list[str] = []
-    for subcat in sorted(groups):
-        lines.append(f"### {subcat}")
-        for item in sorted(groups[subcat], key=lambda x: (-x["importance"], x["title"])):
-            summary_link = ""
-            if summaries_dir is not None:
-                link = _resolve_cross_link(item["url"], summaries_dir)
-                if link:
-                    summary_link = f" | summary_path={link}"
-            lines.append(
-                f"- [{item['importance']}] {item['title']} · {item['source_name']} · "
-                f"published={item['published_at']} · url={item['url']} · "
-                f"reason={item['score_reason']}{summary_link}"
-            )
-            body = (item["raw_summary"] or "").strip().replace("\n", " ")
-            if body:
-                lines.append(f"  > {body[:ITEM_BODY_MAX_CHARS]}")
-        lines.append("")
+    for item in items:
+        summary_link = ""
+        if summaries_dir is not None:
+            link = _resolve_cross_link(item["url"], summaries_dir)
+            if link:
+                summary_link = f" | summary_path={link}"
+        lines.append(
+            f"- [{item['importance']}] {item['title']} · {item['source_name']} · "
+            f"published={item['published_at']} · url={item['url']} · "
+            f"reason={item['score_reason']}{summary_link}"
+        )
+        body = (item["raw_summary"] or "").strip().replace("\n", " ")
+        if body:
+            lines.append(f"  > {body[:ITEM_BODY_MAX_CHARS]}")
     return "\n".join(lines)
 
 
@@ -263,7 +259,7 @@ def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: AN
         )
 
     lines = [header]
-    for item in sorted(items, key=lambda x: (-x["importance"], x["title"])):
+    for item in items:
         lines.append(
             f"- **[Importance {item['importance']}]** "
             f"[{item['title']}]({item['url']}) · {item['source_name']}"

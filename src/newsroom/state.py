@@ -387,7 +387,8 @@ class State:
             "  AND items.scored_at >= ?"
             "  AND items.importance >= ?"
             "  AND (items.published_at IS NULL OR items.published_at >= ?)"
-            " ORDER BY items.importance DESC, items.published_at DESC"
+            " ORDER BY items.importance DESC, items.published_at DESC,"
+            " items.title COLLATE NOCASE ASC"
         )
         return list(
             conn.execute(sql, (since_iso, DIGEST_MIN_IMPORTANCE, age_cutoff_iso)).fetchall()

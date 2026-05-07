@@ -506,6 +506,38 @@ def test_list_items_for_digest_includes_items_without_published_at(state: State)
     assert got[0]["title"] == "No publish date"
 
 
+@freeze_time("2026-04-19 22:30:00")
+def test_list_items_for_digest_tertiary_sort_alphabetical(state: State) -> None:
+    """Equal importance + equal published_at → alphabetical title (case-insensitive).
+
+    Edge case that real arXiv-bulk drops trigger: many papers share the same
+    daily timestamp. Without a tertiary key the order would be undefined.
+    """
+    state.upsert_source(_sample_source())
+    src = state.get_source_by_name("arxiv-cs-cl")
+    same_ts = "2026-04-19T10:00:00+00:00"
+    # Insertion order is intentionally NOT alphabetical — we want to prove
+    # SQL re-orders, not insertion-order leak-through. Mixed case to exercise
+    # COLLATE NOCASE.
+    titles = ["Zeta paper", "alpha paper", "Mu paper", "beta paper"]
+    for title in titles:
+        state.insert_item(
+            source_id=src["id"],
+            item_hash=f"h-{title}",
+            url=f"https://e.com/{title}",
+            title=title,
+            author=None,
+            published_at=same_ts,
+            raw_summary="body",
+            category="ai",
+        )
+        item = next(i for i in state.list_items_by_status("new", limit=10) if i["title"] == title)
+        state.mark_item_scored(item_id=item["id"], importance=4, reason="r", model="h")
+
+    got = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    assert [r["title"] for r in got] == ["alpha paper", "beta paper", "Mu paper", "Zeta paper"]
+
+
 def test_unmark_items_by_digest_label_clears_mark(state: State) -> None:
     state.upsert_source(_sample_source())
     src = state.get_source_by_name("arxiv-cs-cl")

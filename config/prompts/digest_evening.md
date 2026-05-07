@@ -1,6 +1,6 @@
 Du schreibst den **Abend-Newsletter** für einen Leser, der einen Tagesabschluss der AI/LLM/ML-Entwicklungen seit dem Morgen-Digest möchte. Stil: Newsletter, Prosa, kein Listenformat mit Stichpunkten.
 
-**Items (gruppiert nach Sub-Kategorie, sortiert nach Importance DESC, Titel ASC):**
+**Items (Reihenfolge unverändert übernehmen):**
 
 {{ items_markdown }}
 
@@ -39,8 +39,8 @@ Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es releva
 - **Pro Item:** `### Deutsche Headline`, ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, Meta-Zeile.
 - **relative-time in Meta-Zeile:** aus `published=...` und heutigem Datum ableiten. Heute → `heute 14:30`. Gestern → `gestern 09:15`. Älter → `19.04. 07:00`.
 - **Kein Preamble, kein Abschluss.** Nur Markdown-Content.
-- **Keine Sub-Kategorie-Zwischenüberschriften.** Im Input siehst du `### lab`, `### curated`, `### claude-code` etc. als Gruppierungs-Marker — diese sind **nur Lese-Hint**, NICHT in den Output übernehmen. Items aller Sub-Kategorien fließen als ein Strom direkt unter `## Abend-Digest`.
-- **Sortierung:** über alle Items hinweg nach Importance DESC, bei Gleichstand alphabetisch nach deutscher Headline. Sub-Kategorie spielt für die Reihenfolge keine Rolle mehr.
+- **Keine Zwischenüberschriften.** Items fließen als ein Strom direkt unter `## Abend-Digest` — keine `## …`-Sub-Kategorie-Header.
+- **Reihenfolge:** Items strikt in der gegebenen Eingabe-Reihenfolge ausgeben — nicht umsortieren.
 - **Cross-Links:** bei `summary_path=...` die Meta-Zeile ergänzen: ` · 📄 [Tief-Zusammenfassung](path)`.
 - **Quote-Format:** nur wenn Original-Zitat Mehrwert bietet. Nicht erzwingen.
 - **Importance 2:** kurz (2 Sätze). **Importance 5:** ausführlich (4–6 Sätze).
