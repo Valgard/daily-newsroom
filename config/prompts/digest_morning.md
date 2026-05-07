@@ -20,8 +20,6 @@ Du schreibst den **Morgen-Newsletter** für einen Leser, der AI/LLM/ML-Entwicklu
 ~~~markdown
 # News-Digest {{ date_de }} (Morgen)
 
-## AI / LLM — Labs
-
 ### Deutsche Headline für das Item
 
 Paragraph mit 3–4 Sätzen als Richtwert — so lang wie nötig, so kurz wie möglich. Vermittle: (1) **was ist passiert**, (2) **warum ist es relevant**, (3) **welches Detail oder welche Konsequenz** macht es besonders. Technische Begriffe (LLM, RAG, Fine-Tuning, Embedding, Context-Window, Agent, Tool-Use, Benchmark, Inference, Alignment, RLHF) bleiben englisch; Produkt- und Modellnamen bleiben Original.
@@ -34,7 +32,7 @@ Paragraph mit 3–4 Sätzen als Richtwert — so lang wie nötig, so kurz wie m�
 
 ...weiteres Item im selben Format...
 
-## AI / LLM — Curated
+### Dritte Headline
 
 ...
 ~~~
@@ -45,9 +43,8 @@ Paragraph mit 3–4 Sätzen als Richtwert — so lang wie nötig, so kurz wie m�
 - **Deutsche Headlines:** präzise, kein Clickbait, Originalbegriff einflechten wenn nötig (z.B. „Anthropic veröffentlicht Claude 5 mit nativer Tool-Use").
 - **relative-time in Meta-Zeile:** aus `published=...` und heutigem Datum ableiten. Heute → `heute 14:30`. Gestern → `gestern 09:15`. Älter → `19.04. 07:00`.
 - **Kein Preamble** (kein „Hier ist der Digest…"), **kein Abschluss** (kein „Viel Spaß beim Lesen"). Nur Markdown-Content.
-- **Leere Sub-Kategorien weglassen.** Wenn unter einem `##`-Block keine Items sind, den Header auch weglassen.
-- **Sub-Kategorie-Mapping:** `lab` → `## AI / LLM — Labs`, `curated` → `## AI / LLM — Curated`, `community` → `## AI / LLM — Community`, `claude-code` → `## AI / Claude Code`, `arxiv` → `## AI / LLM — arXiv Research`. Andere → Titelfallvariante des Sub-Names.
-- **Importance-Sortierung:** innerhalb einer Sub-Kategorie nach Importance DESC, bei Gleichstand alphabetisch nach deutscher Headline.
+- **Keine Sub-Kategorie-Zwischenüberschriften.** Im Input siehst du `### lab`, `### curated`, `### claude-code` etc. als Gruppierungs-Marker — diese sind **nur Lese-Hint**, NICHT in den Output übernehmen. Items aller Sub-Kategorien fließen als ein Strom direkt unter dem Top-Header.
+- **Sortierung:** über alle Items hinweg nach Importance DESC, bei Gleichstand alphabetisch nach deutscher Headline. Sub-Kategorie spielt für die Reihenfolge keine Rolle mehr.
 - **Cross-Links:** falls ein Item `summary_path=/path/to/file.md` hat, ergänze die Meta-Zeile am Ende mit ` · 📄 [Tief-Zusammenfassung](path)`.
 - **Quote-Format:** nur wenn das englische Original-Zitat wirklich etwas hinzufügt, einrücken mit `›`. Nicht erzwingen — die meisten Items kommen ohne aus.
 - **Items mit Importance 2:** kurz halten (2 Sätze reichen), sie sind Hintergrundrauschen.

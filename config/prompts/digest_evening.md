@@ -20,8 +20,6 @@ Du schreibst den **Abend-Newsletter** für einen Leser, der einen Tagesabschluss
 ~~~markdown
 ## Abend-Digest
 
-## AI / LLM — Labs
-
 ### Deutsche Headline
 
 Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es relevant, welches Detail hebt es ab. Technische Begriffe (LLM, RAG, Fine-Tuning, Agent, Tool-Use, Benchmark, Inference, Alignment) bleiben englisch; Produkt- und Modellnamen bleiben Original.
@@ -41,9 +39,8 @@ Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es releva
 - **Pro Item:** `### Deutsche Headline`, ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, Meta-Zeile.
 - **relative-time in Meta-Zeile:** aus `published=...` und heutigem Datum ableiten. Heute → `heute 14:30`. Gestern → `gestern 09:15`. Älter → `19.04. 07:00`.
 - **Kein Preamble, kein Abschluss.** Nur Markdown-Content.
-- **Leere Sub-Kategorien weglassen.**
-- **Sub-Kategorie-Mapping:** `lab` → `## AI / LLM — Labs`, `curated` → `## AI / LLM — Curated`, `community` → `## AI / LLM — Community`, `claude-code` → `## AI / Claude Code`, `arxiv` → `## AI / LLM — arXiv Research`.
-- **Importance-Sortierung:** innerhalb Sub-Kategorie nach Importance DESC, bei Gleichstand alphabetisch.
+- **Keine Sub-Kategorie-Zwischenüberschriften.** Im Input siehst du `### lab`, `### curated`, `### claude-code` etc. als Gruppierungs-Marker — diese sind **nur Lese-Hint**, NICHT in den Output übernehmen. Items aller Sub-Kategorien fließen als ein Strom direkt unter `## Abend-Digest`.
+- **Sortierung:** über alle Items hinweg nach Importance DESC, bei Gleichstand alphabetisch nach deutscher Headline. Sub-Kategorie spielt für die Reihenfolge keine Rolle mehr.
 - **Cross-Links:** bei `summary_path=...` die Meta-Zeile ergänzen: ` · 📄 [Tief-Zusammenfassung](path)`.
 - **Quote-Format:** nur wenn Original-Zitat Mehrwert bietet. Nicht erzwingen.
 - **Importance 2:** kurz (2 Sätze). **Importance 5:** ausführlich (4–6 Sätze).

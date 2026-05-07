@@ -262,19 +262,13 @@ def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: AN
             "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)\n\n"
         )
 
-    groups: dict[str, list] = defaultdict(list)
-    for item in items:
-        groups[item["source_subcategory"] or "other"].append(item)
-
     lines = [header]
-    for subcat in sorted(groups):
-        lines.append(f"## {subcat.capitalize()}\n")
-        for item in sorted(groups[subcat], key=lambda x: (-x["importance"], x["title"])):
-            lines.append(
-                f"- **[Importance {item['importance']}]** "
-                f"[{item['title']}]({item['url']}) · {item['source_name']}"
-            )
-        lines.append("")
+    for item in sorted(items, key=lambda x: (-x["importance"], x["title"])):
+        lines.append(
+            f"- **[Importance {item['importance']}]** "
+            f"[{item['title']}]({item['url']}) · {item['source_name']}"
+        )
+    lines.append("")
     lines.append(
         "\n_Generiert ohne LLM-Synthese. Bei Bedarf Kommando "
         "`newsroom digest --force` manuell erneut ausführen._\n"
