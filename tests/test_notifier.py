@@ -1,6 +1,7 @@
 """Tests for the notifier module."""
 
 import logging
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -244,6 +245,53 @@ def test_threshold_ai_lab_returns_5_quiet_phase1_regression() -> None:
 
 
 # ── digest-ready notification (spec §4.4 step 10) ─────────────────────
+
+
+async def test_maybe_notify_world_item_uses_welt_prefix(tmp_path: Path) -> None:
+    """A pushed world item produces a `[Welt] ...` title."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    state.upsert_source(
+        Source(
+            name="tagesschau-eilmeldungen",
+            category="world",
+            subcategory="breaking",
+            url="https://www.tagesschau.de/eilmeldungen/index~rss2.xml",
+            feed_type="rss",
+            interval_seconds=300,
+            enabled=True,
+        )
+    )
+    src_id = state.get_source_by_name("tagesschau-eilmeldungen")["id"]
+    state.insert_item(
+        source_id=src_id,
+        item_hash="h-eil",
+        url="https://www.tagesschau.de/eil/x",
+        title="Eilmeldung: Test",
+        author=None,
+        published_at="2026-04-19T10:00:00Z",
+        raw_summary="Test breaking",
+        category="world",
+    )
+    item_id = state.list_items_by_status("new", limit=1)[0]["id"]
+    state.mark_item_scored(item_id=item_id, importance=4, reason="r", model="haiku")
+
+    captured: list[dict] = []
+
+    async def fake_send(*, title: str, message: str, url: str | None) -> None:
+        captured.append({"title": title, "message": message, "url": url})
+
+    notifier = Notifier(send_fn=fake_send)
+    item = state.get_item_with_source(item_id)
+
+    with freeze_time("2026-04-19 10:00:00"):
+        await notifier.maybe_notify(item, state)
+
+    assert len(captured) == 1
+    # Tight equality: catches both the prefix lookup AND the source_name field
+    # extraction in maybe_notify (a stripped or null source_name would silently
+    # pass startswith("[Welt] ")).
+    assert captured[0]["title"] == "[Welt] tagesschau-eilmeldungen"
 
 
 async def test_notify_digest_ready_morning_format() -> None:

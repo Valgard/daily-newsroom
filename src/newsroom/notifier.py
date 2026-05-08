@@ -16,6 +16,7 @@ BERLIN_TZ = ZoneInfo("Europe/Berlin")
 # Notification category/label prefix
 TITLE_PREFIX = {
     "ai": "AI",
+    "world": "Welt",
 }
 
 # Custom notification sound (file in ~/Library/Sounds/<NAME>.aiff).
