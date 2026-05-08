@@ -37,6 +37,12 @@ Full design: `docs/superpowers/specs/2026-04-19-daily-newsroom-design.md`.
   "28h ago" while being probed hourly — the real probe cadence lives in
   `sources.last_checked_at`. Don't diagnose "fetcher stuck" from the status table
   alone; cross-check with `last_checked_at` via SQL or the error column.
+- **Score-prompt routing is per-category.** `scorer.py` builds the prompt
+  name as `f"score_item_{source_category}"`. A new category (e.g. `dresden`,
+  `tech`) MUST come with a matching `config/prompts/score_item_<category>.md`
+  file or the agent_client will raise `KeyError` / `FileNotFoundError` on
+  every item from that category. Side effect: items with `category` typos
+  (e.g. `worldd`) silently fail with a log warning, not a hard error.
 
 ## Known Architecture Deferrals
 
@@ -71,9 +77,9 @@ refactor before Phase-2 scope grows.
 
 ## Phase Roadmap
 
-- **Phase 1 (this):** AI/LLM/ML only. 15 sources + Claude Code releases. See
-  `docs/superpowers/plans/2026-04-19-daily-newsroom-phase1.md`.
-- **Phase 2:** Add Weltgeschehen + Dresden (incl. Dresden-Science: MPI-CBG, MPI-PKS, HZDR, TU Dresden).
+- **Phase 1 (shipped):** AI/LLM/ML, 15 sources, twice-daily digest with H1 slot headers (`# News-Digest <date> (Morgen|Abend)`), arxiv-imp=5-only push policy. Live since 2026-04-21.
+- **Phase 2a (in progress):** Weltgeschehen — second top-level category alongside `ai`. 5–7 sources in breaking/news/analysis subcategories. Per-category score prompt; subcategory-driven push thresholds via `NOTIFICATION_THRESHOLDS` table; two-section digest layout (`## Weltgeschehen` + `## AI/LLM/ML` under each slot's H1). See spec `docs/superpowers/specs/2026-05-07-daily-newsroom-phase2a-design.md` and plan `docs/superpowers/plans/2026-05-07-daily-newsroom-phase2a.md`.
+- **Phase 2b (next):** Dresden + Dresden-Science (TU Dresden, MPI-CBG, MPI-PKS, HZDR Excellence Cluster). Builds on Phase-2a mechanism — mostly YAML + prompt edits.
 - **Phase 3:** Tech, Wissenschaft (Physik/Chemie/Astro), APOD.
 
 ## Non-Goals — DO NOT add
