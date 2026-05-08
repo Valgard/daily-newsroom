@@ -339,3 +339,97 @@ async def test_notify_digest_ready_send_failure_swallowed(
             file_path="/tmp/x.md",
         )
     assert any("digest notification send failed" in rec.message for rec in caplog.records)
+
+
+# ── Phase-2a integration tests (Task 13) ─────────────────────────────
+
+
+@freeze_time("2026-05-08 14:00:00")
+async def test_world_breaking_imp3_daytime_pushes(tmp_path: Path) -> None:
+    """Phase 2a UX: a tagesschau breaking with imp=3 produces a push, no quiet hour."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    state.upsert_source(
+        Source(
+            name="tagesschau-eilmeldungen",
+            category="world",
+            subcategory="breaking",
+            url="https://www.tagesschau.de/eilmeldungen/index~rss2.xml",
+            feed_type="rss",
+            interval_seconds=300,
+            enabled=True,
+        )
+    )
+    src_id = state.get_source_by_name("tagesschau-eilmeldungen")["id"]
+    state.insert_item(
+        source_id=src_id,
+        item_hash="h-eil",
+        url="https://www.tagesschau.de/eil/x",
+        title="Eilmeldung: Bundeskanzler tritt zurück",
+        author=None,
+        published_at="2026-05-08T13:55:00Z",
+        raw_summary="Eil-Body",
+        category="world",
+    )
+    item_id = state.list_items_by_status("new", limit=1)[0]["id"]
+    state.mark_item_scored(item_id=item_id, importance=3, reason="eil", model="haiku")
+
+    captured: list[dict] = []
+
+    async def fake_send(*, title: str, message: str, url: str | None) -> None:
+        captured.append({"title": title, "message": message, "url": url})
+
+    notifier = Notifier(send_fn=fake_send)
+    item = state.get_item_with_source(item_id)
+    await notifier.maybe_notify(item, state)
+
+    assert len(captured) == 1, "Welt-breaking imp=3 must push at daytime"
+    # Tight equality: catches both prefix lookup AND source_name extraction.
+    assert captured[0]["title"] == "[Welt] tagesschau-eilmeldungen"
+
+
+@freeze_time("2026-05-08 14:00:00")
+async def test_world_news_imp3_daytime_does_not_push(tmp_path: Path) -> None:
+    """Counter-test: a non-breaking world item with imp=3 must NOT push."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    state.upsert_source(
+        Source(
+            name="tagesschau-news",
+            category="world",
+            subcategory="news",
+            url="https://www.tagesschau.de/index~rss2.xml",
+            feed_type="rss",
+            interval_seconds=1800,
+            enabled=True,
+        )
+    )
+    src_id = state.get_source_by_name("tagesschau-news")["id"]
+    state.insert_item(
+        source_id=src_id,
+        item_hash="h-n",
+        url="https://www.tagesschau.de/x",
+        title="Routine-Statement",
+        author=None,
+        published_at="2026-05-08T13:55:00Z",
+        raw_summary="body",
+        category="world",
+    )
+    item_id = state.list_items_by_status("new", limit=1)[0]["id"]
+    state.mark_item_scored(item_id=item_id, importance=3, reason="r", model="haiku")
+
+    captured: list[dict] = []
+
+    async def fake_send(*, title: str, message: str, url: str | None) -> None:
+        captured.append({"title": title, "message": message, "url": url})
+
+    notifier = Notifier(send_fn=fake_send)
+    item = state.get_item_with_source(item_id)
+    await notifier.maybe_notify(item, state)
+
+    assert len(captured) == 0, "Welt-news imp=3 must NOT push (threshold is 4)"
+    # Threshold-block path must NOT mark the item as notified — only the
+    # suppression path does that. Catches a regression that calls
+    # mark_item_notified before the threshold check.
+    updated = state.get_item_with_source(item_id)
+    assert updated["notified_at"] is None
