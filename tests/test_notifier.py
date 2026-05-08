@@ -33,8 +33,9 @@ def test_threshold_quiet_hours() -> None:
 def test_threshold_arxiv_pushes_only_at_imp5() -> None:
     # arxiv: paradigm-shifting papers (imp=5) push; lower scores go via digest only.
     # Constant across day and night — symmetric with the night quiet-hours threshold.
-    assert compute_threshold_for_hour(HOUR_DAYTIME_1, subcategory="arxiv") == 5
-    assert compute_threshold_for_hour(HOUR_QUIET_1, subcategory="arxiv") == 5
+    # category="ai" is required: the table resolves ("ai", "arxiv") → (5, 5).
+    assert compute_threshold_for_hour(HOUR_DAYTIME_1, category="ai", subcategory="arxiv") == 5
+    assert compute_threshold_for_hour(HOUR_QUIET_1, category="ai", subcategory="arxiv") == 5
 
 
 def test_meets_threshold_arxiv_imp5_pushes() -> None:
@@ -182,6 +183,64 @@ async def test_notifier_pushes_again_after_15min_window(state: State) -> None:
     with freeze_time("2026-04-19 10:16:00"):
         await notifier.maybe_notify(row2, state)
     assert send_mock.await_count == 2  # noqa: PLR2004
+
+
+# ── digest-ready notification (spec §4.4 step 10) ─────────────────────
+
+
+# ── Phase-2a Welt subcategory tests (new; must fail before migration) ─
+
+
+def test_threshold_world_breaking_lowers_to_3_daytime() -> None:
+    threshold = compute_threshold_for_hour(hour=10, category="world", subcategory="breaking")
+    assert threshold == 3
+
+
+def test_threshold_world_breaking_uses_4_quiet() -> None:
+    threshold = compute_threshold_for_hour(hour=23, category="world", subcategory="breaking")
+    assert threshold == 4
+
+
+def test_threshold_world_news_uses_4_daytime() -> None:
+    """Welt news/analysis fall through to (world, *) wildcard — same as Phase-1 ai."""
+    threshold = compute_threshold_for_hour(hour=10, category="world", subcategory="news")
+    assert threshold == 4
+
+
+def test_threshold_world_analysis_uses_4_daytime() -> None:
+    threshold = compute_threshold_for_hour(hour=10, category="world", subcategory="analysis")
+    assert threshold == 4
+
+
+def test_threshold_unknown_category_falls_through_to_default() -> None:
+    """Phase-3 readiness: a future tech category pushes Phase-1-default until tuned."""
+    threshold = compute_threshold_for_hour(hour=10, category="tech", subcategory="news")
+    assert threshold == 4
+
+
+# ── Phase-1 regression tests (written before table migration) ─────────
+
+
+def test_threshold_arxiv_returns_5_daytime_phase1_regression() -> None:
+    """7d90fbc: arxiv pushes only at imp=5 even at daytime — must survive table migration."""
+    threshold = compute_threshold_for_hour(hour=10, category="ai", subcategory="arxiv")
+    assert threshold == 5
+
+
+def test_threshold_arxiv_returns_5_quiet_phase1_regression() -> None:
+    threshold = compute_threshold_for_hour(hour=23, category="ai", subcategory="arxiv")
+    assert threshold == 5
+
+
+def test_threshold_ai_lab_returns_4_daytime_phase1_regression() -> None:
+    """Phase-1 baseline: non-arxiv ai items push at imp=4 daytime."""
+    threshold = compute_threshold_for_hour(hour=10, category="ai", subcategory="lab")
+    assert threshold == 4
+
+
+def test_threshold_ai_lab_returns_5_quiet_phase1_regression() -> None:
+    threshold = compute_threshold_for_hour(hour=23, category="ai", subcategory="lab")
+    assert threshold == 5
 
 
 # ── digest-ready notification (spec §4.4 step 10) ─────────────────────

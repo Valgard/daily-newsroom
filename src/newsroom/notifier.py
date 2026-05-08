@@ -24,11 +24,20 @@ NOTIFICATION_SOUND = "newsroom-ping"
 
 QUIET_HOUR_START = 22
 QUIET_HOUR_END = 7
-THRESHOLD_QUIET = 5
-THRESHOLD_DAYTIME = 4
 
 # Spec §4.3: suppress duplicate pushes in the same category within this window.
 BUNDLING_WINDOW_MINUTES = 15
+
+# (category, subcategory) → (day_threshold, quiet_threshold)
+# Resolution order: exact match → (category, "*") wildcard → DEFAULT_THRESHOLD.
+# arxiv (imp=5 only) was the 7d90fbc if-clause; it is now a regular row.
+NOTIFICATION_THRESHOLDS: dict[tuple[str, str], tuple[int, int]] = {
+    ("world", "breaking"): (3, 4),
+    ("world", "*"): (4, 5),  # news, analysis
+    ("ai", "arxiv"): (5, 5),  # paradigm-shifting only
+    ("ai", "*"): (4, 5),
+}
+DEFAULT_THRESHOLD: tuple[int, int] = (4, 5)
 
 
 def compute_threshold_for_hour(
@@ -39,17 +48,18 @@ def compute_threshold_for_hour(
 ) -> int:
     """Effective importance threshold for pushing a notification.
 
-    `category` is reserved for Phase 2 per-category overrides (e.g.
-    weltgeschehen-breaking would lower the threshold); unused today.
+    Resolves via NOTIFICATION_THRESHOLDS — specific (category, subcategory)
+    first, then (category, "*") wildcard, then DEFAULT_THRESHOLD. Unknown
+    categories push at Phase-1 default until they get an explicit table row.
     """
-    # arxiv: only paradigm-shifting papers (imp=5) push; lower scores reach the reader
-    # via the digest only. Volume of substantive arxiv work is too high to interrupt
-    # at imp=4, but a genuine "GPT-4-beating open model" paper deserves a banner.
-    if subcategory == "arxiv":
-        return THRESHOLD_QUIET
-
+    table = (
+        NOTIFICATION_THRESHOLDS.get((category or "", subcategory or ""))
+        or NOTIFICATION_THRESHOLDS.get((category or "", "*"))
+        or DEFAULT_THRESHOLD
+    )
+    day, quiet = table
     quiet_hours = hour >= QUIET_HOUR_START or hour < QUIET_HOUR_END
-    return THRESHOLD_QUIET if quiet_hours else THRESHOLD_DAYTIME
+    return quiet if quiet_hours else day
 
 
 def meets_threshold(item: Any, *, hour: int, subcategory: str | None) -> bool:
