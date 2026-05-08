@@ -663,3 +663,34 @@ def test_count_pending_for_scoring_matches_list_query(state: State) -> None:
     assert state.count_pending_for_scoring() == 2  # T1 (new) + T2 (filtered_in)
     # Symmetry: count and list agree
     assert state.count_pending_for_scoring() == len(state.list_items_for_scoring(limit=100))
+
+
+def test_list_items_for_scoring_returns_source_category(tmp_path: Path) -> None:
+    """Phase 2a routing prerequisite: scorer needs source.category in the result row."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    state.upsert_source(
+        Source(
+            name="anthropic",
+            category="ai",
+            subcategory="lab",
+            url="https://www.anthropic.com/news/rss.xml",
+            feed_type="rss",
+            interval_seconds=3600,
+            enabled=True,
+        )
+    )
+    src_id = state.get_source_by_name("anthropic")["id"]
+    state.insert_item(
+        source_id=src_id,
+        item_hash="h1",
+        url="https://a.com/1",
+        title="Test",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="body",
+        category="ai",
+    )
+    rows = state.list_items_for_scoring(limit=10)
+    assert len(rows) == 1
+    assert rows[0]["source_category"] == "ai"

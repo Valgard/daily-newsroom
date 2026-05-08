@@ -289,12 +289,13 @@ class State:
         otherwise sit in the scoring queue and get silently re-scored hours or
         days later, overwriting `scored_at`. See 2026-04-20 forensic thread.
 
-        Joined with sources to expose source_name + source_subcategory.
+        Joined with sources to expose source_name, source_category, and source_subcategory.
         """
         conn = self.connection()
         return list(
             conn.execute(
                 "SELECT items.*, sources.name AS source_name, "
+                "sources.category AS source_category, "
                 "sources.subcategory AS source_subcategory "
                 "FROM items JOIN sources ON items.source_id = sources.id "
                 "WHERE items.status IN ('new', 'filtered_in') "
