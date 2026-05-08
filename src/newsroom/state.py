@@ -377,18 +377,28 @@ class State:
           scrape backfill from surfacing years-old URLs, while still letting
           items published before the digest-cycle cutoff through as long as
           they're within the age window.)
+
+        Exposes source_name, source_category, and source_subcategory from the
+        joined sources row. Items are ordered so that 'world' category items
+        come before 'ai' (and any other category) within a slot, enabling the
+        digester's format_items_for_prompt to emit ## H2 headers on
+        category-change boundaries without Python re-sorting.
         """
         conn = self.connection()
         age_cutoff_iso = (datetime.now(UTC) - timedelta(days=DIGEST_MAX_ITEM_AGE_DAYS)).isoformat()
+        # Category-priority sort: extend the CASE for new categories (Phase-2b
+        # adds `WHEN 'dresden' THEN 1 ELSE 2`). See spec §8.3.
         sql = (
             "SELECT items.*, sources.name AS source_name,"
+            " sources.category AS source_category,"
             " sources.subcategory AS source_subcategory"
             " FROM items JOIN sources ON items.source_id = sources.id"
             " WHERE items.status = 'scored' AND items.included_in_digest IS NULL"
             "  AND items.scored_at >= ?"
             "  AND items.importance >= ?"
             "  AND (items.published_at IS NULL OR items.published_at >= ?)"
-            " ORDER BY items.importance DESC, items.published_at DESC,"
+            " ORDER BY (CASE sources.category WHEN 'world' THEN 0 ELSE 1 END),"
+            " items.importance DESC, items.published_at DESC,"
             " items.title COLLATE NOCASE ASC"
         )
         return list(

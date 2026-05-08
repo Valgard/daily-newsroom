@@ -665,6 +665,95 @@ def test_count_pending_for_scoring_matches_list_query(state: State) -> None:
     assert state.count_pending_for_scoring() == len(state.list_items_for_scoring(limit=100))
 
 
+@freeze_time("2026-04-19 22:30:00")
+def test_list_items_for_digest_returns_source_category(tmp_path: Path) -> None:
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    state.upsert_source(
+        Source(
+            name="anthropic",
+            category="ai",
+            subcategory="lab",
+            url="https://www.anthropic.com/news/rss.xml",
+            feed_type="rss",
+            interval_seconds=3600,
+            enabled=True,
+        )
+    )
+    src_id = state.get_source_by_name("anthropic")["id"]
+    state.insert_item(
+        source_id=src_id,
+        item_hash="h1",
+        url="https://a.com/1",
+        title="Test",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="body",
+        category="ai",
+    )
+    item_id = state.list_items_by_status("new", limit=1)[0]["id"]
+    state.mark_item_scored(item_id=item_id, importance=4, reason="r", model="haiku")
+
+    rows = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    assert len(rows) == 1
+    assert rows[0]["source_category"] == "ai"
+
+
+@freeze_time("2026-04-19 22:30:00")
+def test_list_items_for_digest_orders_world_before_ai(tmp_path: Path) -> None:
+    """Spec §5.2: SQL prepends category priority so Welt items render first."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    # Two sources: one ai, one world
+    for name, cat, sub in [
+        ("anthropic", "ai", "lab"),
+        ("tagesschau-news", "world", "news"),
+    ]:
+        state.upsert_source(
+            Source(
+                name=name,
+                category=cat,
+                subcategory=sub,
+                url=f"https://example.com/{name}.rss",
+                feed_type="rss",
+                interval_seconds=3600,
+                enabled=True,
+            )
+        )
+    # Both items get importance=4 → without category priority, title would decide.
+    # Title 'AAA' (ai) would come before 'ZZZ' (world) under tertiary alphabetic key.
+    # With category priority, world wins regardless.
+    ai_id = state.get_source_by_name("anthropic")["id"]
+    world_id = state.get_source_by_name("tagesschau-news")["id"]
+    state.insert_item(
+        source_id=ai_id,
+        item_hash="h-ai",
+        url="https://a.com/ai",
+        title="AAA-ai-item",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="body",
+        category="ai",
+    )
+    state.insert_item(
+        source_id=world_id,
+        item_hash="h-world",
+        url="https://t.de/world",
+        title="ZZZ-world-item",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="body",
+        category="world",
+    )
+    for item in state.list_items_by_status("new", limit=10):
+        state.mark_item_scored(item_id=item["id"], importance=4, reason="r", model="haiku")
+
+    rows = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    assert len(rows) == 2
+    assert rows[0]["source_category"] == "world", "Welt must come first"
+    assert rows[1]["source_category"] == "ai"
+
+
 def test_list_items_for_scoring_returns_source_category(tmp_path: Path) -> None:
     """Phase 2a routing prerequisite: scorer needs source.category in the result row."""
     state = State(tmp_path / "t.db")
