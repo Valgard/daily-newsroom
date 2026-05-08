@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -75,3 +75,94 @@ async def test_end_to_end_pipeline(
 
     # 7. Verify digest marked in state
     assert state.get_digest("2026-04-19", "morning") is not None
+
+
+# ── Phase 2a integration ──────────────────────────────────────────────────────
+
+
+@freeze_time("2026-05-08 22:30:00")
+async def test_mixed_world_and_ai_digest_writes_both_sections(
+    tmp_path: Path,
+) -> None:
+    """End-to-end: 2 ai + 2 world items → digest file has Welt H2 above AI H2."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+
+    for name, cat, sub in [
+        ("anthropic", "ai", "lab"),
+        ("tagesschau-news", "world", "news"),
+    ]:
+        state.upsert_source(
+            Source(
+                name=name,
+                category=cat,
+                subcategory=sub,
+                url=f"https://example.com/{name}.rss",
+                feed_type="rss",
+                interval_seconds=3600,
+                enabled=True,
+            )
+        )
+
+    ai_id = state.get_source_by_name("anthropic")["id"]
+    world_id = state.get_source_by_name("tagesschau-news")["id"]
+
+    for i, (sid, cat, title) in enumerate(
+        [
+            (world_id, "world", "Bundestag verabschiedet X"),
+            (world_id, "world", "EZB senkt Zins"),
+            (ai_id, "ai", "Claude 5 released"),
+            (ai_id, "ai", "OpenAI o3 GA"),
+        ]
+    ):
+        state.insert_item(
+            source_id=sid,
+            item_hash=f"h{i}",
+            url=f"https://example.com/{i}",
+            title=title,
+            author=None,
+            published_at="2026-05-08T08:00:00Z",
+            raw_summary=f"body {i}",
+            category=cat,
+        )
+
+    for item in state.list_items_by_status("new", limit=10):
+        state.mark_item_scored(item_id=item["id"], importance=4, reason="r", model="haiku")
+
+    mock_agent = AsyncMock()
+    # Opus mock: echo a digest with both H2 headers preserved
+    mock_agent.ask.return_value = (
+        "# News-Digest 8. May 2026 (Abend)\n\n"
+        "## Weltgeschehen\n\n"
+        "### Bundestag verabschiedet X\nProsa.\n\n"
+        "### EZB senkt Zins\nProsa.\n\n"
+        "## AI/LLM/ML\n\n"
+        "### Claude 5 released\nProsa.\n\n"
+        "### OpenAI o3 GA\nProsa.\n"
+    )
+
+    output_root = tmp_path / "news"
+    await generate_digest(
+        state=state,
+        slot="evening",
+        date=datetime(2026, 5, 8).date(),
+        output_root=output_root,
+        agent=mock_agent,
+    )
+
+    # The agent received items_markdown with both H2s in the right order
+    items_md = mock_agent.ask.call_args.kwargs["variables"]["items_markdown"]
+    welt_idx = items_md.find("## Weltgeschehen")
+    ai_idx = items_md.find("## AI/LLM/ML")
+    assert welt_idx >= 0 and ai_idx >= 0
+    assert welt_idx < ai_idx, "Welt H2 must come before AI H2 in items_markdown"
+
+    # The output file has both H2s, in Welt-before-AI order
+    out = output_root / "2026" / "05" / "2026-05-08.md"
+    body = out.read_text()
+    assert "# News-Digest 8. May 2026 (Abend)" in body
+    assert body.count("## Weltgeschehen") == 1
+    assert body.count("## AI/LLM/ML") == 1
+    welt_file_idx = body.find("## Weltgeschehen")
+    ai_file_idx = body.find("## AI/LLM/ML")
+    assert welt_file_idx < ai_file_idx, "Welt H2 must precede AI H2 in the written digest"
