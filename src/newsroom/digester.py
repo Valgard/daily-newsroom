@@ -28,6 +28,9 @@ EVENING_START_HOUR = 16
 EVENING_END_HOUR = 24  # exclusive
 
 SLOT_LABEL_DE = {"morning": "Morgen", "evening": "Abend"}
+# Top-level category → digest H2 label. Unknown categories fall back to
+# `.capitalize()` at the call site (Phase-2b/3 readiness: `dresden` → "Dresden").
+CATEGORY_LABEL = {"world": "Weltgeschehen", "ai": "AI/LLM/ML"}
 
 
 def _format_top_header(date: _date, slot: str) -> str:
@@ -83,21 +86,29 @@ ITEM_BODY_MAX_CHARS = 1200
 
 
 def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  # noqa: ANN001
-    """Render items as a flat markdown payload, in the given input order.
+    """Render items as a flat markdown payload, inserting a `## {CategoryLabel}`
+    H2 marker on each category-change boundary.
 
-    Items are expected to arrive pre-sorted from SQL (`importance DESC,
-    published_at DESC`); this function does not re-sort or re-group. The
-    digest prompt instructs Opus to emit items in the same order.
+    Items must arrive pre-sorted by SQL (Welt before AI by category priority,
+    then importance DESC, published_at DESC, title ASC). This function does
+    not re-sort or re-group; it only watches for category transitions and
+    emits a header whenever it sees a new category.
 
     Each item renders as:
         - [importance] title · source · published=iso · url=url · reason=reason
           > body (truncated to ITEM_BODY_MAX_CHARS)
-
-    `published_at` is passed so the digest prompt can express relative time
-    ("heute 14:30", "gestern", "vor 3h") without additional state injection.
     """
     lines: list[str] = []
+    current_category: str | None = None
     for item in items:
+        cat = item["source_category"]
+        if cat != current_category:
+            if current_category is not None:
+                lines.append("")
+            label = CATEGORY_LABEL.get(cat, cat.capitalize())
+            lines.append(f"## {label}")
+            lines.append("")
+            current_category = cat
         summary_link = ""
         if summaries_dir is not None:
             link = _resolve_cross_link(item["url"], summaries_dir)
@@ -279,7 +290,16 @@ def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: AN
     )
 
     lines = [header]
+    current_category: str | None = None
     for item in items:
+        cat = item["source_category"]
+        if cat != current_category:
+            if current_category is not None:
+                lines.append("")
+            label = CATEGORY_LABEL.get(cat, cat.capitalize())
+            lines.append(f"## {label}")
+            lines.append("")
+            current_category = cat
         lines.append(
             f"- **[Importance {item['importance']}]** "
             f"[{item['title']}]({item['url']}) · {item['source_name']}"

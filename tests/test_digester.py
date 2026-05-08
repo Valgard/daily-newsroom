@@ -589,3 +589,96 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
     assert len(dispatched) == 1
     assert dispatched[0].slot == "morning"
     assert dispatched[0].item_count == 3
+
+
+# ── Phase-2a §5.1: category-boundary H2 headers ───────────────────────
+
+
+@freeze_time("2026-04-19 22:30:00")
+def test_format_items_for_prompt_emits_world_then_ai_top_level_headers(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """Mixed digest: ## Weltgeschehen above world items, ## AI/LLM/ML above ai items."""
+    populated_state.upsert_source(
+        Source(
+            name="tagesschau-news",
+            category="world",
+            subcategory="news",
+            url="https://www.tagesschau.de/index~rss2.xml",
+            feed_type="rss",
+            interval_seconds=3600,
+            enabled=True,
+        )
+    )
+    src_id = populated_state.get_source_by_name("tagesschau-news")["id"]
+    populated_state.insert_item(
+        source_id=src_id,
+        item_hash="h-w",
+        url="https://www.tagesschau.de/x",
+        title="Bundestag-Item",
+        author=None,
+        published_at="2026-04-19T08:00:00Z",
+        raw_summary="welt body",
+        category="world",
+    )
+    item_id = populated_state.list_items_by_status("new", limit=1)[0]["id"]
+    populated_state.mark_item_scored(item_id=item_id, importance=4, reason="welt", model="haiku")
+    items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    formatted = format_items_for_prompt(items)
+
+    welt_idx = formatted.find("## Weltgeschehen")
+    ai_idx = formatted.find("## AI/LLM/ML")
+    bundestag_idx = formatted.find("Bundestag-Item")
+    title_0_idx = formatted.find("Title 0")  # AI item from the populated_state fixture
+
+    assert welt_idx >= 0, "Welt H2 missing"
+    assert ai_idx >= 0, "AI H2 missing"
+    assert welt_idx < bundestag_idx < ai_idx < title_0_idx, (
+        "expected order: ## Weltgeschehen, welt items, ## AI/LLM/ML, ai items"
+    )
+
+
+@freeze_time("2026-04-19 22:30:00")
+def test_format_items_for_prompt_ai_only_wraps_in_ai_header(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """AI-only digest gets one ## AI/LLM/ML header, no Welt header."""
+    items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    formatted = format_items_for_prompt(items)
+    assert "## AI/LLM/ML" in formatted
+    assert "## Weltgeschehen" not in formatted
+
+
+@freeze_time("2026-04-19 22:30:00")
+def test_format_items_for_prompt_world_only_omits_ai_header(tmp_path: Path) -> None:
+    """Welt-only digest gets one ## Weltgeschehen header, no AI header."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    state.upsert_source(
+        Source(
+            name="tagesschau-news",
+            category="world",
+            subcategory="news",
+            url="https://www.tagesschau.de/index~rss2.xml",
+            feed_type="rss",
+            interval_seconds=3600,
+            enabled=True,
+        )
+    )
+    src_id = state.get_source_by_name("tagesschau-news")["id"]
+    state.insert_item(
+        source_id=src_id,
+        item_hash="h-w",
+        url="https://t.de/x",
+        title="World Only",
+        author=None,
+        published_at="2026-04-19T08:00:00Z",
+        raw_summary="body",
+        category="world",
+    )
+    item_id = state.list_items_by_status("new", limit=1)[0]["id"]
+    state.mark_item_scored(item_id=item_id, importance=4, reason="r", model="haiku")
+    items = state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    formatted = format_items_for_prompt(items)
+    assert "## Weltgeschehen" in formatted
+    assert "## AI/LLM/ML" not in formatted
