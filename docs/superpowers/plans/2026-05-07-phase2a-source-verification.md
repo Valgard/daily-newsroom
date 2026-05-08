@@ -43,15 +43,16 @@ Verification of the six candidate sources for Phase 2a (Weltgeschehen scope). Al
 
 ## Final Source Count for Phase 2a
 
-**6 sources confirmed:**
+**5 sources land in `sources.yaml` for Phase 2a (Plan-Task 11):**
 1. tagesschau-news (main)
-2. tagesschau-breaking (via item-level heuristic)
-3. bbc-world
-4. zeit-politik
-5. politico-eu
-6. reuters-world (via openrss.org mirror)
+2. bbc-world
+3. zeit-politik
+4. politico-eu
+5. reuters-world (via openrss.org mirror)
 
-These will be added to `sources.yaml` in Plan-Task 11 along with their scoring weights and breaking-news flags per spec §3.2.
+The **`tagesschau-breaking` heuristic** (variant 1) is **deferred to a follow-up commit** — it requires a fetcher-level title-prefix filter that is out of scope for Phase 2a's mechanism work. The `(world, breaking)` row remains in `NOTIFICATION_THRESHOLDS` (3, 4) so the wiring is ready when the heuristic lands; until then, the row is simply unreachable.
+
+These 5 sources are added to `sources.yaml` in Plan-Task 11 with the categories/subcategories/intervals from spec §3.1.
 
 ## Notes for Implementation
 

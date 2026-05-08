@@ -244,6 +244,11 @@ async def test_generate_digest_falls_back_on_llm_error(
     body = out.read_text()
     assert "Automatisch generiert" in body  # fallback marker
     assert "Title 0" in body  # items still listed
+    # Phase-2a: the LLM-outage fallback path must also emit the ## category
+    # boundary header (the populated_state fixture has only ai items, so just
+    # one ## AI/LLM/ML wrapper appears and no ## Weltgeschehen).
+    assert "## AI/LLM/ML" in body
+    assert "## Weltgeschehen" not in body
 
 
 # ── --force regeneration (fixes: IntegrityError on existing digest row;
