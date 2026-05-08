@@ -70,6 +70,10 @@ def test_determine_slot_returns_none_outside_windows() -> None:
 def test_format_items_for_prompt_preserves_input_order(populated_state: State) -> None:
     """Items must render flat in the given input order — no subcat grouping,
     no re-sorting. Sort responsibility lives in SQL (`list_items_for_digest`).
+
+    Phase-2a addition: AI-only output is wrapped in a single ``## AI/LLM/ML``
+    H2 header (the category-boundary insertion fires once at the start of the
+    only category present). The Welt H2 is omitted by the empty-section rule.
     """
     populated_state.upsert_source(
         Source(
@@ -98,12 +102,14 @@ def test_format_items_for_prompt_preserves_input_order(populated_state: State) -
     items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
     formatted = format_items_for_prompt(items)
 
-    # Flat output: no `### lab` / `### curated` subcategory markers.
+    # Phase 2a: one ## AI/LLM/ML header at the top, no subcategory headers.
+    assert formatted.count("## AI/LLM/ML") == 1
     assert "### lab" not in formatted
     assert "### curated" not in formatted
+    # AI-only digest must NOT emit a Welt header (empty-section omission).
+    assert "## Weltgeschehen" not in formatted
 
-    # Each input item appears exactly once, in the SQL-defined order
-    # (importance DESC, published_at DESC).
+    # Each input item appears exactly once, in the SQL-defined order.
     titles_in_order = [item["title"] for item in items]
     positions = [formatted.find(t) for t in titles_in_order]
     assert all(p >= 0 for p in positions), "every item title must be rendered"
