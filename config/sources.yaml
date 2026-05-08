@@ -149,3 +149,49 @@ sources:
     feed_type: json
     interval_seconds: 43200
     enabled: true
+
+  # Phase 2a — Weltgeschehen
+  # Note: tagesschau-eilmeldungen (subcategory=breaking) was verified dead in
+  # Task 1 (HTTP 404 on https://www.tagesschau.de/eilmeldungen/index~rss2.xml).
+  # The `breaking` subcategory is reserved in NOTIFICATION_THRESHOLDS but unused
+  # until a fetcher-level Eilmeldung-prefix heuristic on tagesschau-news lands
+  # as a follow-up commit (spec §3.3 variant 1).
+
+  # ─── news (3) ───────────────────────────────────
+  - name: tagesschau-news
+    category: world
+    subcategory: news
+    url: https://www.tagesschau.de/index~rss2.xml
+    feed_type: rss
+    interval_seconds: 1800
+    enabled: true
+  - name: bbc-world
+    category: world
+    subcategory: news
+    url: http://feeds.bbci.co.uk/news/world/rss.xml
+    feed_type: rss
+    interval_seconds: 3600
+    enabled: true
+  - name: reuters-world
+    category: world
+    subcategory: news
+    url: https://openrss.org/www.reuters.com/world/
+    feed_type: rss
+    interval_seconds: 3600
+    enabled: true
+
+  # ─── analysis (2) ───────────────────────────────
+  - name: zeit-politik
+    category: world
+    subcategory: analysis
+    url: https://newsfeed.zeit.de/politik/index
+    feed_type: rss
+    interval_seconds: 7200
+    enabled: true
+  - name: politico-eu
+    category: world
+    subcategory: analysis
+    url: https://www.politico.eu/feed/
+    feed_type: rss
+    interval_seconds: 7200
+    enabled: true

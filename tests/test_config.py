@@ -71,3 +71,15 @@ def test_load_sources_rejects_duplicate_names(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigError, match="duplicate"):
         load_sources(dupe)
+
+
+def test_sources_yaml_has_world_category() -> None:
+    """Phase 2a: sources.yaml contains at least 5 sources with category=world."""
+    sources = load_sources(Path("config/sources.yaml"))
+    world_sources = [s for s in sources if s.category == "world"]
+    assert len(world_sources) >= 5, f"Expected ≥5 world sources, got {len(world_sources)}"
+
+    subcategories = {s.subcategory for s in world_sources}
+    assert "news" in subcategories, "world.news subcategory missing"
+    assert "analysis" in subcategories, "world.analysis subcategory missing"
+    # 'breaking' is optional in Phase 2a (depends on Task 1 fallback decision)
