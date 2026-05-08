@@ -29,7 +29,7 @@ async def score_pending_items(
     for processed, item in enumerate(pending, start=1):
         try:
             result = await agent.ask(
-                prompt_name="score_item",
+                prompt_name=f"score_item_{item['source_category']}",
                 variables={
                     "source_name": item["source_name"],
                     "title": item["title"],

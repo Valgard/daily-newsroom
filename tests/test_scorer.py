@@ -78,6 +78,60 @@ async def test_scorer_leaves_item_on_parse_error(state_with_items: State) -> Non
     assert len(remaining) == 3  # none scored
 
 
+async def test_scorer_routes_prompt_by_category(tmp_path: Path) -> None:
+    """Phase 2a: ai items use score_item_ai, world items use score_item_world."""
+    state = State(tmp_path / "t.db")
+    state.ensure_schema()
+    for name, cat, sub in [
+        ("anthropic", "ai", "lab"),
+        ("tagesschau-news", "world", "news"),
+    ]:
+        state.upsert_source(
+            Source(
+                name=name,
+                category=cat,
+                subcategory=sub,
+                url=f"https://example.com/{name}.rss",
+                feed_type="rss",
+                interval_seconds=3600,
+                enabled=True,
+            )
+        )
+    ai_id = state.get_source_by_name("anthropic")["id"]
+    world_id = state.get_source_by_name("tagesschau-news")["id"]
+    state.insert_item(
+        source_id=ai_id,
+        item_hash="h-ai",
+        url="https://a.com/ai",
+        title="AI item",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="body",
+        category="ai",
+    )
+    state.insert_item(
+        source_id=world_id,
+        item_hash="h-world",
+        url="https://t.de/world",
+        title="World item",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="body",
+        category="world",
+    )
+
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {"importance": 3, "reason": "test"}
+    await score_pending_items(state, agent=mock_agent)
+
+    prompts_used = [call.kwargs["prompt_name"] for call in mock_agent.ask.call_args_list]
+    # Each routing must fire exactly once — set equality would hide a duplicate-call
+    # bug (e.g. AI routed twice, world once still satisfies the set).
+    assert prompts_used.count("score_item_ai") == 1
+    assert prompts_used.count("score_item_world") == 1
+    assert len(prompts_used) == 2
+
+
 async def test_scorer_emits_progress_heartbeat_every_10_items(tmp_path, caplog) -> None:
     """During long score runs (e.g. arxiv burst → 100 pending), every 10 items
     processed must emit an INFO progress line so live throughput is visible
