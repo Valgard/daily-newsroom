@@ -20,6 +20,8 @@ Du schreibst den **Abend-Newsletter** für einen Leser, der einen Tagesabschluss
 ~~~markdown
 # News-Digest {{ date_de }} (Abend)
 
+## Weltgeschehen
+
 ### Deutsche Headline
 
 Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es relevant, welches Detail hebt es ab. Technische Begriffe (LLM, RAG, Fine-Tuning, Agent, Tool-Use, Benchmark, Inference, Alignment) bleiben englisch; Produkt- und Modellnamen bleiben Original.
@@ -39,7 +41,8 @@ Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es releva
 - **Pro Item:** `### Deutsche Headline`, ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, Meta-Zeile.
 - **relative-time in Meta-Zeile:** aus `published=...` und heutigem Datum ableiten. Heute → `heute 14:30`. Gestern → `gestern 09:15`. Älter → `19.04. 07:00`.
 - **Kein Preamble, kein Abschluss.** Nur Markdown-Content.
-- **Keine Zwischenüberschriften.** Items fließen als ein Strom direkt unter dem Top-Header — keine `## …`-Sub-Kategorie-Header.
+- **Top-Level-Struktur des Inputs übernehmen.** Der Input enthält ein oder mehrere `## Weltgeschehen` / `## AI/LLM/ML` H2-Marker, die Items in Top-Level-Categories trennen. Spiegele diese H2-Header 1:1 in deinem Output, in der Input-Reihenfolge, mit den jeweiligen Items darunter. Wenn nur eine Category vorhanden ist, gib nur einen H2 aus. Bei Welt-only-Tagen entfällt `## AI/LLM/ML`; bei AI-only-Tagen entfällt `## Weltgeschehen`.
+- **Keine Subcategory-Zwischenüberschriften.** Items fließen als Strom unter ihrem `## {Category}`-Header — keine zusätzlichen `## subcat`-Header (`## lab`, `## breaking` etc.) und keine `### subcat`-Header. Nur die zwei Top-Level-Categories sind erlaubt.
 - **Reihenfolge:** Items strikt in der gegebenen Eingabe-Reihenfolge ausgeben — nicht umsortieren.
 - **Cross-Links:** bei `summary_path=...` die Meta-Zeile ergänzen: ` · 📄 [Tief-Zusammenfassung](path)`.
 - **Quote-Format:** nur wenn Original-Zitat Mehrwert bietet. Nicht erzwingen.
