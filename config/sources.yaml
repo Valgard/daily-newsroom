@@ -140,6 +140,13 @@ sources:
     feed_type: rss
     interval_seconds: 7200
     enabled: true
+  - name: reddit-machinelearningnews
+    category: ai
+    subcategory: community
+    url: https://www.reddit.com/r/machinelearningnews/.rss
+    feed_type: rss
+    interval_seconds: 7200
+    enabled: true
 
   # Claude Code
   - name: claude-code-releases
