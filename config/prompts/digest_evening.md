@@ -24,6 +24,8 @@ Du schreibst den **Abend-Newsletter** für einen Leser, der einen Tagesabschluss
 
 ### Deutsche Headline
 
+- [ ] interessiert mich
+
 Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es relevant, welches Detail hebt es ab. Technische Begriffe (LLM, RAG, Fine-Tuning, Agent, Tool-Use, Benchmark, Inference, Alignment) bleiben englisch; Produkt- und Modellnamen bleiben Original.
 
 › "Original English quote, wenn es einen Mehrwert bietet."
@@ -38,7 +40,8 @@ Paragraph mit 3–4 Sätzen als Richtwert. Was ist passiert, warum ist es releva
 **Regeln:**
 
 - **Start mit `# News-Digest {{ date_de }} (Abend)`** — eigener H1-Header, symmetrisch zum Morgen-Digest. Wird an die Morgen-Datei mit `---`-Separator angehängt; das `---` gehört nicht in deinen Output.
-- **Pro Item:** `### Deutsche Headline`, ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, Meta-Zeile.
+- **Pro Item:** `### Deutsche Headline`, dann die Checkbox-Zeile `- [ ] interessiert mich` (siehe nächste Regel), ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, Meta-Zeile.
+- **Interesse-Checkbox:** Direkt unter **jeder** `### Headline` — durch je eine Leerzeile von Überschrift und Folgeabsatz getrennt — exakt die Zeile `- [ ] interessiert mich` ausgeben (unangekreuzt, wortgleich, keine Variation). Sie dient dem Leser als manueller Interesse-Marker und gehört zu jedem Item, ausnahmslos.
 - **relative-time in Meta-Zeile:** aus `published=...` und heutigem Datum ableiten. Heute → `heute 14:30`. Gestern → `gestern 09:15`. Älter → `19.04. 07:00`.
 - **Kein Preamble, kein Abschluss.** Nur Markdown-Content.
 - **Top-Level-Struktur des Inputs übernehmen.** Der Input enthält ein oder mehrere `## Weltgeschehen` / `## AI/LLM/ML` H2-Marker, die Items in Top-Level-Categories trennen. Spiegele diese H2-Header 1:1 in deinem Output, in der Input-Reihenfolge, mit den jeweiligen Items darunter. Wenn nur eine Category vorhanden ist, gib nur einen H2 aus. Bei Welt-only-Tagen entfällt `## AI/LLM/ML`; bei AI-only-Tagen entfällt `## Weltgeschehen`.

@@ -251,6 +251,25 @@ async def test_generate_digest_falls_back_on_llm_error(
     assert "## Weltgeschehen" not in body
 
 
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_fallback_emits_interest_checkbox(
+    populated_state: State, tmp_path: Path
+) -> None:
+    mock_agent = AsyncMock()
+    mock_agent.ask.side_effect = AgentError("opus unavailable")
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
+    # one unchecked "interessiert mich" box per item line
+    assert body.count("[ ] interessiert mich") == body.count("**[Importance")
+    assert body.count("[ ] interessiert mich") == 3
+
+
 # ── --force regeneration (fixes: IntegrityError on existing digest row;
 #    evening appending instead of replacing) ───────────────────────────
 

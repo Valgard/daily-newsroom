@@ -304,6 +304,7 @@ def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: AN
             f"- **[Importance {item['importance']}]** "
             f"[{item['title']}]({item['url']}) · {item['source_name']}"
         )
+        lines.append("  - [ ] interessiert mich")
     lines.append("")
     lines.append(
         "\n_Generiert ohne LLM-Synthese. Bei Bedarf Kommando "

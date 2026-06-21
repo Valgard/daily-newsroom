@@ -24,6 +24,8 @@ Du schreibst den **Morgen-Newsletter** für einen Leser, der AI/LLM/ML-Entwicklu
 
 ### Deutsche Headline für das Item
 
+- [ ] interessiert mich
+
 Paragraph mit 3–4 Sätzen als Richtwert — so lang wie nötig, so kurz wie möglich. Vermittle: (1) **was ist passiert**, (2) **warum ist es relevant**, (3) **welches Detail oder welche Konsequenz** macht es besonders. Technische Begriffe (LLM, RAG, Fine-Tuning, Embedding, Context-Window, Agent, Tool-Use, Benchmark, Inference, Alignment, RLHF) bleiben englisch; Produkt- und Modellnamen bleiben Original.
 
 › "Original English quote, wenn ein Zitat den Punkt besser trifft als Paraphrase."
@@ -41,7 +43,8 @@ Paragraph mit 3–4 Sätzen als Richtwert — so lang wie nötig, so kurz wie m�
 
 **Regeln:**
 
-- **Pro Item:** `### Deutsche Headline`, dann ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, dann die Meta-Zeile.
+- **Pro Item:** `### Deutsche Headline`, dann die Checkbox-Zeile `- [ ] interessiert mich` (siehe nächste Regel), dann ein Prosa-Absatz (3–4 Sätze Richtwert, 2–6 Sätze möglich), optional inline-Zitat mit `›`, dann die Meta-Zeile.
+- **Interesse-Checkbox:** Direkt unter **jeder** `### Headline` — durch je eine Leerzeile von Überschrift und Folgeabsatz getrennt — exakt die Zeile `- [ ] interessiert mich` ausgeben (unangekreuzt, wortgleich, keine Variation). Sie dient dem Leser als manueller Interesse-Marker und gehört zu jedem Item, ausnahmslos.
 - **Deutsche Headlines:** präzise, kein Clickbait, Originalbegriff einflechten wenn nötig (z.B. „Anthropic veröffentlicht Claude 5 mit nativer Tool-Use").
 - **relative-time in Meta-Zeile:** aus `published=...` und heutigem Datum ableiten. Heute → `heute 14:30`. Gestern → `gestern 09:15`. Älter → `19.04. 07:00`.
 - **Kein Preamble** (kein „Hier ist der Digest…"), **kein Abschluss** (kein „Viel Spaß beim Lesen"). Nur Markdown-Content.
