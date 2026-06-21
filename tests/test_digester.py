@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 from freezegun import freeze_time
@@ -10,6 +11,7 @@ from newsroom.agent_client import AgentError
 from newsroom.config import Source
 from newsroom.digester import (
     NoSlotError,
+    _relative_time,
     determine_slot,
     format_items_for_prompt,
     generate_digest,
@@ -48,6 +50,14 @@ def populated_state(tmp_path: Path) -> State:
         item_id = state.list_items_by_status("new", limit=1)[0]["id"]
         state.mark_item_scored(item_id=item_id, importance=imp, reason=f"r{i}", model="haiku")
     return state
+
+
+def test_relative_time_today_yesterday_older() -> None:
+    now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
+    # 02:00Z in April = 04:00 Berlin (CEST, UTC+2)
+    assert _relative_time("2026-04-19T02:00:00Z", now) == "heute 04:00"
+    assert _relative_time("2026-04-18T05:00:00Z", now) == "gestern 07:00"
+    assert _relative_time("2026-04-10T05:00:00Z", now) == "10.04. 07:00"
 
 
 @freeze_time("2026-04-19 07:30")

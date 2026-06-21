@@ -44,6 +44,23 @@ def _format_top_header(date: _date, slot: str) -> str:
     return f"# News-Digest {date_de} ({SLOT_LABEL_DE[slot]})"
 
 
+def _relative_time(published_at: str, now: datetime) -> str:
+    """Render an item's publish time relative to ``now``, in Europe/Berlin.
+
+    today -> ``heute HH:MM``; yesterday -> ``gestern HH:MM``;
+    older  -> ``DD.MM. HH:MM``.
+    """
+    dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(BERLIN_TZ)
+    today = now.astimezone(BERLIN_TZ).date()
+    day = dt.date()
+    hm = dt.strftime("%H:%M")
+    if day == today:
+        return f"heute {hm}"
+    if day == today - timedelta(days=1):
+        return f"gestern {hm}"
+    return f"{dt.strftime('%d.%m.')} {hm}"
+
+
 class NoSlotError(Exception):
     """Current hour is outside morning and evening windows."""
 
