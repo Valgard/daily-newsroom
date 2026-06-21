@@ -150,18 +150,11 @@ def _render_digest(
     return "\n\n".join(parts)
 
 
-def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  # noqa: ANN001
-    """Render items as a flat markdown payload, inserting a `## {CategoryLabel}`
-    H2 marker on each category-change boundary.
-
-    Items must arrive pre-sorted by SQL (Welt before AI by category priority,
-    then importance DESC, published_at DESC, title ASC). This function does
-    not re-sort or re-group; it only watches for category transitions and
-    emits a header whenever it sees a new category.
-
-    Each item renders as:
-        - [importance] title · source · published=iso · url=url · reason=reason
-          > body (truncated to ITEM_BODY_MAX_CHARS)
+def format_items_for_prompt(items) -> str:  # noqa: ANN001
+    """Render items as a flat markdown payload for the digest LLM, inserting a
+    `## {CategoryLabel}` H2 on each category-change boundary. Items must arrive
+    pre-sorted by SQL; this function does not re-sort. Each item line carries the
+    DB `id` so the LLM can key its returned content back to the row.
     """
     lines: list[str] = []
     current_category: str | None = None
@@ -174,15 +167,10 @@ def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  #
             lines.append(f"## {label}")
             lines.append("")
             current_category = cat
-        summary_link = ""
-        if summaries_dir is not None:
-            link = _resolve_cross_link(item["url"], summaries_dir)
-            if link:
-                summary_link = f" | summary_path={link}"
         lines.append(
-            f"- [{item['importance']}] {item['title']} · {item['source_name']} · "
-            f"published={item['published_at']} · url={item['url']} · "
-            f"reason={item['score_reason']}{summary_link}"
+            f"- id={item['id']} [{item['importance']}] {item['title']} · "
+            f"{item['source_name']} · published={item['published_at']} · "
+            f"reason={item['score_reason']}"
         )
         body = (item["raw_summary"] or "").strip().replace("\n", " ")
         if body:
@@ -254,7 +242,7 @@ async def generate_digest(
         )
         return target_file
 
-    items_md = format_items_for_prompt(items, summaries_dir=summaries_dir)
+    items_md = format_items_for_prompt(items)
     date_de = date.strftime("%-d. %B %Y")  # "19. April 2026" on macOS/Linux
 
     try:

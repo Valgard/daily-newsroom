@@ -771,6 +771,17 @@ def test_format_items_for_prompt_world_only_omits_ai_header(tmp_path: Path) -> N
     assert "## AI/LLM/ML" not in formatted
 
 
+@freeze_time("2026-04-19 22:30:00")
+def test_format_items_for_prompt_includes_id(populated_state: State) -> None:
+    """Each item line should start with id={id}; url= and summary_path= removed."""
+    items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    formatted = format_items_for_prompt(items)
+    for item in items:
+        assert f"id={item['id']}" in formatted
+    assert "summary_path=" not in formatted
+    assert "url=" not in formatted
+
+
 def test_render_digest_groups_degrades_and_omits_separator() -> None:
     now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
     items = [
