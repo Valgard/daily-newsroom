@@ -12,6 +12,7 @@ from newsroom.config import Source
 from newsroom.digester import (
     NoSlotError,
     _relative_time,
+    _render_digest,
     _render_item,
     determine_slot,
     format_items_for_prompt,
@@ -768,3 +769,46 @@ def test_format_items_for_prompt_world_only_omits_ai_header(tmp_path: Path) -> N
     formatted = format_items_for_prompt(items)
     assert "## Weltgeschehen" in formatted
     assert "## AI/LLM/ML" not in formatted
+
+
+def test_render_digest_groups_degrades_and_omits_separator() -> None:
+    now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
+    items = [
+        _item_row(id=1, source_category="world", title="W1"),
+        _item_row(id=2, source_category="ai", title="A1", raw_summary="ai summary"),
+    ]
+    contents = {
+        1: {"headline": "Welt-Headline", "prose": "Welt-Prosa."}
+    }  # id=2 missing -> degraded
+    cross_links = {1: None, 2: None}
+    out = _render_digest(
+        items,
+        contents,
+        cross_links,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        now=now,
+    )
+    assert out.startswith(
+        "# News-Digest 19. April 2026 (Morgen)\n\n## Weltgeschehen\n\n### Welt-Headline"
+    )
+    assert "## AI/LLM/ML" in out
+    assert "### A1" in out  # degraded headline = title
+    assert "ai summary" in out  # degraded prose = raw_summary
+    assert "---" not in out  # separator owned by _write_digest_file
+    assert out.count("- [ ] interessiert mich") == 2
+
+
+def test_render_digest_banner_after_header() -> None:
+    now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
+    items = [_item_row(id=1, source_category="ai", title="A1")]
+    out = _render_digest(
+        items,
+        {},
+        {1: None},
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        now=now,
+        banner="⚠️ Test-Banner",
+    )
+    assert out.startswith("# News-Digest 19. April 2026 (Morgen)\n\n⚠️ Test-Banner\n\n## AI/LLM/ML")

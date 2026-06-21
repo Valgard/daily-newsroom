@@ -122,6 +122,34 @@ def _resolve_cross_link(item_url: str, summaries_dir: Path) -> Path | None:
 ITEM_BODY_MAX_CHARS = 1200
 
 
+def _render_digest(
+    items,  # noqa: ANN001
+    contents_by_id: dict[int, dict],
+    cross_links: dict[int, Path | None],
+    *,
+    slot: str,
+    date: _date,
+    now: datetime,
+    banner: str | None = None,
+) -> str:
+    """Render a full digest body (no trailing newline, no evening separator)."""
+    parts = [_format_top_header(date, slot)]
+    if banner:
+        parts.append(banner)
+    current_category: str | None = None
+    for item in items:
+        cat = item["source_category"]
+        if cat != current_category:
+            parts.append(f"## {CATEGORY_LABEL.get(cat, cat.capitalize())}")
+            current_category = cat
+        content = contents_by_id.get(item["id"])
+        if content is None:
+            body = (item["raw_summary"] or "").strip().replace("\n", " ")[:ITEM_BODY_MAX_CHARS]
+            content = {"headline": item["title"], "prose": body}
+        parts.append(_render_item(item, content, cross_links.get(item["id"]), now))
+    return "\n\n".join(parts)
+
+
 def format_items_for_prompt(items, summaries_dir: Path | None = None) -> str:  # noqa: ANN001
     """Render items as a flat markdown payload, inserting a `## {CategoryLabel}`
     H2 marker on each category-change boundary.
