@@ -324,6 +324,7 @@ async def test_generate_digest_fallback_emits_interest_checkbox(
     body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
     # one unchecked "interessiert mich" box per item (shared renderer, not old fallback format)
     assert body.count("[ ] interessiert mich") == 3
+    assert "Importance" in body  # degraded render still carries importance metadata
 
 
 @freeze_time("2026-04-19 22:30:00")
