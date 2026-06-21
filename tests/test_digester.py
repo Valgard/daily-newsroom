@@ -213,7 +213,7 @@ def test_format_items_for_prompt_preserves_body_up_to_1200_chars(populated_state
 async def test_generate_digest_writes_file(populated_state: State, tmp_path: Path) -> None:
     output_root = tmp_path / "news"
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# News-Digest 19. April 2026 (Morgen)\n\n## AI / LLM\n- Dummy"
+    mock_agent.ask.return_value = {"items": []}
     await generate_digest(
         state=populated_state,
         slot="morning",
@@ -230,7 +230,7 @@ async def test_generate_digest_writes_file(populated_state: State, tmp_path: Pat
 @freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_records_in_state(populated_state: State, tmp_path: Path) -> None:
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# Test"
+    mock_agent.ask.return_value = {"items": []}
     await generate_digest(
         state=populated_state,
         slot="morning",
@@ -247,7 +247,7 @@ async def test_generate_digest_records_in_state(populated_state: State, tmp_path
 @freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_marks_items_included(populated_state: State, tmp_path: Path) -> None:
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# Test"
+    mock_agent.ask.return_value = {"items": []}
     await generate_digest(
         state=populated_state,
         slot="morning",
@@ -271,7 +271,7 @@ async def test_generate_digest_evening_appends(populated_state: State, tmp_path:
     (morning_dir / "2026-04-19.md").write_text("# Morgen Content\n")
 
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# News-Digest 19. April 2026 (Abend)\n\n- x"
+    mock_agent.ask.return_value = {"items": []}
     await generate_digest(
         state=populated_state,
         slot="evening",
@@ -322,9 +322,31 @@ async def test_generate_digest_fallback_emits_interest_checkbox(
         agent=mock_agent,
     )
     body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
-    # one unchecked "interessiert mich" box per item line
-    assert body.count("[ ] interessiert mich") == body.count("**[Importance")
+    # one unchecked "interessiert mich" box per item (shared renderer, not old fallback format)
     assert body.count("[ ] interessiert mich") == 3
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_renders_llm_content_with_checkbox(
+    populated_state: State, tmp_path: Path
+) -> None:
+    items = populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {
+        "items": [{"id": it["id"], "headline": f"H{it['id']}", "prose": "P."} for it in items]
+    }
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
+    assert "### H" in body
+    assert body.count("- [ ] interessiert mich") == len(items)
+    assert "[Weiterlesen →]" in body
+    assert "Importance" in body
 
 
 # ── --force regeneration (fixes: IntegrityError on existing digest row;
@@ -362,7 +384,9 @@ async def test_generate_digest_force_regenerates_existing(
 ) -> None:
     """--force must delete the old DB row + unmark items + rewrite the file."""
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# First run content"
+    mock_agent.ask.return_value = {
+        "items": [{"id": 1, "headline": "First-Run-Headline", "prose": "P."}]
+    }
     # First run: normal generation
     await generate_digest(
         state=populated_state,
@@ -375,7 +399,9 @@ async def test_generate_digest_force_regenerates_existing(
     assert first_row is not None
 
     # Second run with force=True — must succeed, not raise IntegrityError
-    mock_agent.ask.return_value = "# Second run content"
+    mock_agent.ask.return_value = {
+        "items": [{"id": 1, "headline": "Second-Run-Headline", "prose": "P."}]
+    }
     await generate_digest(
         state=populated_state,
         slot="morning",
@@ -388,8 +414,8 @@ async def test_generate_digest_force_regenerates_existing(
     assert second_row is not None
     # Same (date, slot) UNIQUE but new content in file
     file_body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
-    assert "Second run content" in file_body
-    assert "First run content" not in file_body
+    assert "Second-Run-Headline" in file_body
+    assert "First-Run-Headline" not in file_body
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -406,7 +432,9 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
     )
 
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# News-Digest 19. April 2026 (Abend)\n\nNew evening body.\n"
+    mock_agent.ask.return_value = {
+        "items": [{"id": 1, "headline": "New-Evening-Headline", "prose": "P."}]
+    }
 
     # Need to seed DB with matching existing digest + items so the force path activates
     populated_state.insert_digest(
@@ -429,9 +457,9 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
     body = (morning_dir / "2026-04-19.md").read_text()
     # Morning section preserved
     assert "Morning body." in body
-    # Old evening dropped, new evening present
+    # Old evening dropped, new evening rendered by _render_digest
     assert "Old evening body." not in body
-    assert "New evening body." in body
+    assert "New-Evening-Headline" in body
     # Exactly one evening top-header
     assert body.count("(Abend)") == 1
 
@@ -445,7 +473,7 @@ async def test_generate_digest_notifies_when_items_present(
 ) -> None:
     """Successful non-empty digest fires exactly one notify_digest_ready call."""
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# News-Digest 19. April 2026 (Morgen)\n\nbody"
+    mock_agent.ask.return_value = {"items": []}
     notify_send = AsyncMock()
     notifier = Notifier(send_fn=notify_send)
 
@@ -492,7 +520,7 @@ async def test_generate_digest_no_notify_on_idempotent_skip(
 ) -> None:
     """Second call without --force returns early and does NOT notify a second time."""
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# Body"
+    mock_agent.ask.return_value = {"items": []}
     notify_send = AsyncMock()
     notifier = Notifier(send_fn=notify_send)
 
@@ -551,7 +579,7 @@ async def test_generate_digest_force_regen_notifies_again(
 ) -> None:
     """--force regeneration fires another notify_digest_ready."""
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# Body"
+    mock_agent.ask.return_value = {"items": []}
     notify_send = AsyncMock()
     notifier = Notifier(send_fn=notify_send)
 
@@ -581,7 +609,7 @@ async def test_generate_digest_force_regen_notifies_again(
 async def test_generate_digest_no_notifier_works(populated_state: State, tmp_path: Path) -> None:
     """Omitting the notifier param (default None) is allowed and does not crash."""
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# Body"
+    mock_agent.ask.return_value = {"items": []}
 
     out = await generate_digest(
         state=populated_state,
@@ -604,7 +632,7 @@ async def test_generate_digest_emits_digest_finalized_event(
     longer because the structured log was silent on the digest path.
     """
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# Body"
+    mock_agent.ask.return_value = {"items": []}
 
     with caplog.at_level(logging.INFO, logger="newsroom.digester"):
         await generate_digest(
@@ -656,7 +684,7 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
     path even ran — diagnosis required reading code instead of grep'ing logs.
     """
     mock_agent = AsyncMock()
-    mock_agent.ask.return_value = "# Body"
+    mock_agent.ask.return_value = {"items": []}
     notify_send = AsyncMock()
     notifier = Notifier(send_fn=notify_send)
 

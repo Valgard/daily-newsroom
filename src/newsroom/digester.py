@@ -244,18 +244,32 @@ async def generate_digest(
 
     items_md = format_items_for_prompt(items)
     date_de = date.strftime("%-d. %B %Y")  # "19. April 2026" on macOS/Linux
+    now = datetime.now(BERLIN_TZ)
+    cross_links = {item["id"]: _resolve_cross_link(item["url"], summaries_dir) for item in items}
 
+    banner: str | None = None
+    contents_by_id: dict[int, dict] = {}
     try:
-        content = await agent.ask(
+        result = await agent.ask(
             prompt_name=f"digest_{slot}",
             variables={"items_markdown": items_md, "date_de": date_de},
             model=DIGEST_MODEL,
-            parse="text",
+            parse="json",
         )
+        contents_by_id = {int(c["id"]): c for c in result.get("items", []) if "id" in c}
     except Exception as e:  # noqa: BLE001
-        logger.warning("Opus digest call failed, using fallback: %s", e)
-        content = _build_fallback_digest(items, slot=slot, date=date)
+        logger.warning("Opus digest call failed, using degraded render: %s", e)
+        banner = "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)"
 
+    content = _render_digest(
+        items,
+        contents_by_id,
+        cross_links,
+        slot=slot,
+        date=date,
+        now=now,
+        banner=banner,
+    )
     _write_digest_file(target_file, content, slot=slot, force=force)
 
     for item in items:
@@ -331,36 +345,3 @@ def _write_digest_file(path: Path, content: str, *, slot: str, force: bool = Fal
             existing += "\n"
     separator = "\n\n---\n\n" if not existing.endswith("\n---\n\n") else ""
     path.write_text(existing + separator + body)
-
-
-def _build_fallback_digest(items, *, slot: str, date: _date) -> str:  # noqa: ANN001
-    """Emergency digest: no LLM synthesis, just a structured list."""
-    top = _format_top_header(date, slot)
-    prefix = "" if slot == "morning" else "\n\n---\n\n"
-    header = (
-        f"{prefix}{top}\n\n"
-        "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)\n\n"
-    )
-
-    lines = [header]
-    current_category: str | None = None
-    for item in items:
-        cat = item["source_category"]
-        if cat != current_category:
-            if current_category is not None:
-                lines.append("")
-            label = CATEGORY_LABEL.get(cat, cat.capitalize())
-            lines.append(f"## {label}")
-            lines.append("")
-            current_category = cat
-        lines.append(
-            f"- **[Importance {item['importance']}]** "
-            f"[{item['title']}]({item['url']}) · {item['source_name']}"
-        )
-        lines.append("  - [ ] interessiert mich")
-    lines.append("")
-    lines.append(
-        "\n_Generiert ohne LLM-Synthese. Bei Bedarf Kommando "
-        "`newsroom digest --force` manuell erneut ausführen._\n"
-    )
-    return "\n".join(lines)

@@ -50,7 +50,7 @@ async def test_end_to_end_pipeline(
     agent_mock.ask.side_effect = [
         {"importance": 5, "reason": "major"},
         {"importance": 3, "reason": "ok"},
-        "# Morning digest\n\n## Lab\n- Item 1\n- Item 2",
+        {"items": []},
     ]
 
     # 5. Score
@@ -71,7 +71,7 @@ async def test_end_to_end_pipeline(
     )
     out = tmp_path / "news" / "2026" / "04" / "2026-04-19.md"
     assert out.exists()
-    assert "Morning digest" in out.read_text()
+    assert "# News-Digest 19. April 2026 (Morgen)" in out.read_text()
 
     # 7. Verify digest marked in state
     assert state.get_digest("2026-04-19", "morning") is not None
@@ -130,16 +130,14 @@ async def test_mixed_world_and_ai_digest_writes_both_sections(
         state.mark_item_scored(item_id=item["id"], importance=4, reason="r", model="haiku")
 
     mock_agent = AsyncMock()
-    # Opus mock: echo a digest with both H2 headers preserved
-    mock_agent.ask.return_value = (
-        "# News-Digest 8. May 2026 (Abend)\n\n"
-        "## Weltgeschehen\n\n"
-        "### Bundestag verabschiedet X\nProsa.\n\n"
-        "### EZB senkt Zins\nProsa.\n\n"
-        "## AI/LLM/ML\n\n"
-        "### Claude 5 released\nProsa.\n\n"
-        "### OpenAI o3 GA\nProsa.\n"
-    )
+
+    # Collect item IDs after scoring so we can key the LLM response
+    items_in_db = state.list_items_for_digest(since_iso="2026-01-01T00:00:00")
+    mock_agent.ask.return_value = {
+        "items": [
+            {"id": it["id"], "headline": it["title"], "prose": "Prosa."} for it in items_in_db
+        ]
+    }
 
     output_root = tmp_path / "news"
     await generate_digest(
