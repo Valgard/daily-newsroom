@@ -178,7 +178,7 @@ def format_items_for_prompt(items) -> str:  # noqa: ANN001
     return "\n".join(lines)
 
 
-async def generate_digest(
+async def generate_digest(  # noqa: PLR0912, PLR0915
     *,
     state,  # noqa: ANN001
     slot: str,
@@ -260,6 +260,15 @@ async def generate_digest(
     except Exception as e:  # noqa: BLE001
         logger.warning("Opus digest call failed, using degraded render: %s", e)
         banner = "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)"
+
+    if banner is None:
+        matched = sum(1 for item in items if item["id"] in contents_by_id)
+        if matched != len(items):
+            logger.warning(
+                "digest content mismatch: %d/%d items have LLM content, rest degraded",
+                matched,
+                len(items),
+            )
 
     content = _render_digest(
         items,
