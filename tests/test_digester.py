@@ -12,6 +12,7 @@ from newsroom.config import Source
 from newsroom.digester import (
     NoSlotError,
     _relative_time,
+    _render_item,
     determine_slot,
     format_items_for_prompt,
     generate_digest,
@@ -50,6 +51,51 @@ def populated_state(tmp_path: Path) -> State:
         item_id = state.list_items_by_status("new", limit=1)[0]["id"]
         state.mark_item_scored(item_id=item_id, importance=imp, reason=f"r{i}", model="haiku")
     return state
+
+
+def _item_row(**over):  # noqa: ANN001, ANN002, ANN003
+    base = {
+        "id": 1,
+        "importance": 3,
+        "title": "Title",
+        "source_name": "zeit-politik",
+        "published_at": "2026-04-19T02:00:00Z",
+        "url": "https://e.x/a",
+        "score_reason": "r",
+        "raw_summary": "body",
+        "source_category": "world",
+    }
+    base.update(over)
+    return base
+
+
+def test_render_item_full_with_quote_and_cross_link(tmp_path: Path) -> None:
+    now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
+    link = tmp_path / "deep.md"
+    out = _render_item(
+        _item_row(),
+        {"headline": "Eine Headline", "prose": "Ein Absatz.", "quote": '"Zitat."'},
+        link,
+        now,
+    )
+    assert out == (
+        "### Eine Headline\n\n"
+        "- [ ] interessiert mich\n\n"
+        "Ein Absatz.\n\n"
+        '› "Zitat."\n\n'
+        f"[Weiterlesen →](https://e.x/a) · *zeit-politik · heute 04:00 · Importance 3*"
+        f" · 📄 [Tief-Zusammenfassung]({link})"
+    )
+
+
+def test_render_item_minimal_no_quote_no_cross_link_empty_prose() -> None:
+    now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
+    out = _render_item(_item_row(), {"headline": "H", "prose": ""}, None, now)
+    assert out == (
+        "### H\n\n"
+        "- [ ] interessiert mich\n\n"
+        "[Weiterlesen →](https://e.x/a) · *zeit-politik · heute 04:00 · Importance 3*"
+    )
 
 
 def test_relative_time_today_yesterday_older() -> None:

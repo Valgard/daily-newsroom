@@ -61,6 +61,26 @@ def _relative_time(published_at: str, now: datetime) -> str:
     return f"{dt.strftime('%d.%m.')} {hm}"
 
 
+def _render_item(item, content: dict, cross_link: Path | None, now: datetime) -> str:  # noqa: ANN001
+    """Render one digest entry deterministically from a DB row + LLM content."""
+    parts = [f"### {content['headline']}", "- [ ] interessiert mich"]
+    prose = (content.get("prose") or "").strip()
+    if prose:
+        parts.append(prose)
+    quote = (content.get("quote") or "").strip()
+    if quote:
+        parts.append(f"› {quote}")
+    reltime = _relative_time(item["published_at"], now)
+    meta = (
+        f"[Weiterlesen →]({item['url']}) · "
+        f"*{item['source_name']} · {reltime} · Importance {item['importance']}*"
+    )
+    if cross_link is not None:
+        meta += f" · 📄 [Tief-Zusammenfassung]({cross_link})"
+    parts.append(meta)
+    return "\n\n".join(parts)
+
+
 class NoSlotError(Exception):
     """Current hour is outside morning and evening windows."""
 
