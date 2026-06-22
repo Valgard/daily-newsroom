@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date as _date
@@ -33,15 +34,15 @@ SLOT_LABEL_DE = {"morning": "Morgen", "evening": "Abend"}
 CATEGORY_LABEL = {"world": "Weltgeschehen", "ai": "AI/LLM/ML"}
 
 
-def _format_top_header(date: _date, slot: str) -> str:
-    """Canonical digest top-header: ``# News-Digest <date_de> (Morgen|Abend)``.
+def _format_top_header(date: _date, slot: str, category: str) -> str:
+    """Canonical digest H1: '# News-Digest <date_de> — <Category> (Morgen|Abend)'.
 
-    Single source of truth for the H1 across all rendering paths: the main
-    render (`_render_digest`), the empty-digest branch, and the degraded
-    LLM-outage path.
+    Single source of truth for the H1 across every render path. The category
+    label resolves via CATEGORY_LABEL (unknown → `.capitalize()`).
     """
     date_de = date.strftime("%-d. %B %Y")
-    return f"# News-Digest {date_de} ({SLOT_LABEL_DE[slot]})"
+    label = CATEGORY_LABEL.get(category, category.capitalize())
+    return f"# News-Digest {date_de} — {label} ({SLOT_LABEL_DE[slot]})"
 
 
 def _relative_time(published_at: str, now: datetime) -> str:
@@ -63,7 +64,7 @@ def _relative_time(published_at: str, now: datetime) -> str:
 
 def _render_item(item, content: dict, cross_link: Path | None, now: datetime) -> str:  # noqa: ANN001
     """Render one digest entry deterministically from a DB row + LLM content."""
-    parts = [f"### {content['headline']}", "- [ ] interessiert mich"]
+    parts = [f"## {content['headline']}", "- [ ] interessiert mich"]
     prose = (content.get("prose") or "").strip()
     if prose:
         parts.append(prose)
@@ -122,6 +123,19 @@ def _resolve_cross_link(item_url: str, summaries_dir: Path) -> Path | None:
 ITEM_BODY_MAX_CHARS = 1200
 
 
+def _content_for(item, contents_by_id: dict[int, dict]) -> dict:  # noqa: ANN001
+    """LLM content for an item, or a degraded fallback from the DB row.
+
+    A missing id (item absent from the LLM JSON) renders from the row:
+    headline = title, prose = raw_summary truncated to ITEM_BODY_MAX_CHARS.
+    """
+    content = contents_by_id.get(item["id"])
+    if content is None:
+        body = (item["raw_summary"] or "").strip().replace("\n", " ")[:ITEM_BODY_MAX_CHARS]
+        content = {"headline": item["title"], "prose": body}
+    return content
+
+
 def _render_digest(
     items,  # noqa: ANN001
     contents_by_id: dict[int, dict],
@@ -130,22 +144,18 @@ def _render_digest(
     slot: str,
     date: _date,
     now: datetime,
+    category: str,
     banner: str | None = None,
 ) -> str:
-    """Render a full digest body (no trailing newline, no evening separator)."""
-    parts = [_format_top_header(date, slot)]
+    """Render one category's digest body (no trailing newline, no separator).
+
+    All items must share `category`; the caller partitions before calling.
+    """
+    parts = [_format_top_header(date, slot, category)]
     if banner:
         parts.append(banner)
-    current_category: str | None = None
     for item in items:
-        cat = item["source_category"]
-        if cat != current_category:
-            parts.append(f"## {CATEGORY_LABEL.get(cat, cat.capitalize())}")
-            current_category = cat
-        content = contents_by_id.get(item["id"])
-        if content is None:
-            body = (item["raw_summary"] or "").strip().replace("\n", " ")[:ITEM_BODY_MAX_CHARS]
-            content = {"headline": item["title"], "prose": body}
+        content = _content_for(item, contents_by_id)
         parts.append(_render_item(item, content, cross_links.get(item["id"]), now))
     return "\n\n".join(parts)
 
@@ -178,6 +188,25 @@ def format_items_for_prompt(items) -> str:  # noqa: ANN001
     return "\n".join(lines)
 
 
+def _category_file(target_dir: Path, date: _date, category: str) -> Path:
+    """Per-category, per-day digest file: '<target_dir>/<date>_<category>.md'."""
+    return target_dir / f"{date.isoformat()}_{category}.md"
+
+
+def _paths_from_record(raw: str | None, fallback: list[Path]) -> list[Path]:
+    """Parse a digest row's `file_path` (JSON array) back into Paths.
+
+    Tolerates a legacy single-path string (pre-split rows). Empty/blank value
+    (claimed but not yet finalized) → the computed `fallback` targets.
+    """
+    if not raw:
+        return fallback
+    try:
+        return [Path(p) for p in json.loads(raw)]
+    except (json.JSONDecodeError, TypeError):
+        return [Path(raw)]
+
+
 async def generate_digest(  # noqa: PLR0912, PLR0915
     *,
     state,  # noqa: ANN001
@@ -188,8 +217,8 @@ async def generate_digest(  # noqa: PLR0912, PLR0915
     agent: AgentClient | None = None,
     force: bool = False,
     notifier: Notifier | None = None,
-) -> Path:
-    """Generate digest for the given slot+date. Returns path of written file."""
+) -> list[Path]:
+    """Generate digest for the given slot+date. Returns list of written category files."""
     if agent is None:
         agent = AgentClient()  # noqa: PLC0415
     if summaries_dir is None:
@@ -197,50 +226,36 @@ async def generate_digest(  # noqa: PLR0912, PLR0915
 
     target_dir = output_root / f"{date.year:04d}" / f"{date.month:02d}"
     target_dir.mkdir(parents=True, exist_ok=True)
-    target_file = target_dir / f"{date.isoformat()}.md"
 
     existing = state.get_digest(date.isoformat(), slot)
     if existing and not force:
         logger.info("digest already exists for %s/%s, skipping", date, slot)
-        # Claimed but not yet finalized → file_path is empty; return the
-        # target path the winner will write to.
-        return Path(existing["file_path"] or str(target_file))
+        return _paths_from_record(existing["file_path"], [])
     if existing and force:
-        # Clear previous digest's item-marks + DB row so regeneration is clean.
         logger.info("--force: clearing previous digest for %s/%s", date, slot)
         label = f"{date.isoformat()}-{slot}"
         state.unmark_items_by_digest_label(label)
         state.delete_digest(date=date.isoformat(), slot=slot)
 
-    # Atomic slot claim before any expensive work. If another process won the
-    # race between get_digest() above and this claim, we abort without calling
-    # Opus — the winner will write the file.
     if not state.claim_digest_slot(date=date.isoformat(), slot=slot, model=DIGEST_MODEL):
         logger.info("digest slot %s/%s claimed concurrently, skipping without Opus", date, slot)
-        return target_file
+        return []
 
     cutoff = _cutoff_for_slot(slot, state)
     items = state.list_items_for_digest(since_iso=cutoff)
 
     if not items:
-        # No items → write/append placeholder, still finalize digest
-        top = _format_top_header(date, slot)
-        if slot == "morning":
-            content = f"{top}\n\n_Keine neuen Items seit dem letzten Digest._\n"
-        else:
-            content = f"\n\n---\n\n{top}\n\n_Keine neuen Items seit Morgen-Digest._\n"
-        _write_digest_file(target_file, content, slot=slot, force=force)
         state.finalize_digest(
             date=date.isoformat(),
             slot=slot,
-            file_path=str(target_file),
+            file_path=json.dumps([]),
             item_count=0,
         )
         logger.info(
             "digest finalized (empty)",
             extra={"event": "digest_finalized", "slot": slot, "item_count": 0},
         )
-        return target_file
+        return []
 
     items_md = format_items_for_prompt(items)
     date_de = date.strftime("%-d. %B %Y")  # "19. April 2026" on macOS/Linux
@@ -270,16 +285,26 @@ async def generate_digest(  # noqa: PLR0912, PLR0915
                 len(items),
             )
 
-    content = _render_digest(
-        items,
-        contents_by_id,
-        cross_links,
-        slot=slot,
-        date=date,
-        now=now,
-        banner=banner,
-    )
-    _write_digest_file(target_file, content, slot=slot, force=force)
+    # Partition items by top-level category, preserving SQL order (world first).
+    groups: dict[str, list] = {}
+    for item in items:
+        groups.setdefault(item["source_category"], []).append(item)
+
+    written: list[Path] = []
+    for category, cat_items in groups.items():
+        content = _render_digest(
+            cat_items,
+            contents_by_id,
+            cross_links,
+            slot=slot,
+            date=date,
+            now=now,
+            category=category,
+            banner=banner,
+        )
+        path = _category_file(target_dir, date, category)
+        _write_digest_file(path, content, slot=slot, force=force)
+        written.append(path)
 
     for item in items:
         state.mark_item_digested(
@@ -289,28 +314,32 @@ async def generate_digest(  # noqa: PLR0912, PLR0915
     state.finalize_digest(
         date=date.isoformat(),
         slot=slot,
-        file_path=str(target_file),
+        file_path=json.dumps([str(p) for p in written]),
         item_count=len(items),
     )
     logger.info(
         "digest finalized",
         extra={"event": "digest_finalized", "slot": slot, "item_count": len(items)},
     )
+
     if notifier is not None:
-        logger.info(
-            "digest notify dispatched",
-            extra={
-                "event": "digest_notify_dispatched",
-                "slot": slot,
-                "item_count": len(items),
-            },
-        )
-        await notifier.notify_digest_ready(
-            slot=slot,
-            item_count=len(items),
-            file_path=target_file,
-        )
-    return target_file
+        for category, cat_items in groups.items():
+            category_label = CATEGORY_LABEL.get(category, category.capitalize())
+            logger.info(
+                "digest notify dispatched",
+                extra={
+                    "event": "digest_notify_dispatched",
+                    "slot": slot,
+                    "category": category,
+                    "item_count": len(cat_items),
+                },
+            )
+            await notifier.notify_digest_ready(
+                category_label=category_label,
+                item_count=len(cat_items),
+                file_path=_category_file(target_dir, date, category),
+            )
+    return written
 
 
 # Matches the canonical evening top-header line: '# News-Digest <date_de> (Abend)'.

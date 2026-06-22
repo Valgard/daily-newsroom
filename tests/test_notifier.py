@@ -295,32 +295,32 @@ async def test_maybe_notify_world_item_uses_welt_prefix(tmp_path: Path) -> None:
 
 
 async def test_notify_digest_ready_morning_format() -> None:
-    """Morning slot produces 'Morgen-Digest bereit (N Items)' message."""
+    """AI/LLM/ML category produces 'AI/LLM/ML-Digest bereit (N Items)' message."""
     send_mock = AsyncMock()
     notifier = Notifier(send_fn=send_mock)
     await notifier.notify_digest_ready(
-        slot="morning",
-        item_count=20,
-        file_path="/tmp/2026-04-19.md",
+        category_label="AI/LLM/ML",
+        item_count=8,
+        file_path="/tmp/2026-04-19_ai.md",
     )
     send_mock.assert_awaited_once()
     kwargs = send_mock.call_args.kwargs
     assert kwargs["title"] == "Newsroom"
-    assert kwargs["message"] == "Morgen-Digest bereit (20 Items)"
-    assert kwargs["url"] == "file:///tmp/2026-04-19.md"
+    assert kwargs["message"] == "AI/LLM/ML-Digest bereit (8 Items)"
+    assert kwargs["url"] == "file:///tmp/2026-04-19_ai.md"
 
 
 async def test_notify_digest_ready_evening_format() -> None:
-    """Evening slot produces 'Abend-Digest bereit (N Items)' message."""
+    """Weltgeschehen category produces 'Weltgeschehen-Digest bereit (N Items)' message."""
     send_mock = AsyncMock()
     notifier = Notifier(send_fn=send_mock)
     await notifier.notify_digest_ready(
-        slot="evening",
+        category_label="Weltgeschehen",
         item_count=14,
-        file_path="/tmp/2026-04-19.md",
+        file_path="/tmp/2026-04-19_world.md",
     )
     send_mock.assert_awaited_once()
-    assert send_mock.call_args.kwargs["message"] == "Abend-Digest bereit (14 Items)"
+    assert send_mock.call_args.kwargs["message"] == "Weltgeschehen-Digest bereit (14 Items)"
 
 
 async def test_notify_digest_ready_send_failure_swallowed(
@@ -334,7 +334,7 @@ async def test_notify_digest_ready_send_failure_swallowed(
     notifier = Notifier(send_fn=raising_send)
     with caplog.at_level(logging.WARNING, logger="newsroom.notifier"):
         await notifier.notify_digest_ready(
-            slot="morning",
+            category_label="AI/LLM/ML",
             item_count=1,
             file_path="/tmp/x.md",
         )

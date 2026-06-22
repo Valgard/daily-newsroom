@@ -62,16 +62,17 @@ async def test_end_to_end_pipeline(
     assert scored == 2
 
     # 6. Generate digest
-    await generate_digest(
+    written = await generate_digest(
         state=state,
         slot="morning",
         date=date(2026, 4, 19),
         output_root=tmp_path / "news",
         agent=agent_mock,
     )
-    out = tmp_path / "news" / "2026" / "04" / "2026-04-19.md"
+    assert len(written) > 0
+    out = written[0]
     assert out.exists()
-    assert "# News-Digest 19. April 2026 (Morgen)" in out.read_text()
+    assert "# News-Digest 19. April 2026 — AI/LLM/ML (Morgen)" in out.read_text()
 
     # 7. Verify digest marked in state
     assert state.get_digest("2026-04-19", "morning") is not None
@@ -155,12 +156,21 @@ async def test_mixed_world_and_ai_digest_writes_both_sections(
     assert welt_idx >= 0 and ai_idx >= 0
     assert welt_idx < ai_idx, "Welt H2 must come before AI H2 in items_markdown"
 
-    # The output file has both H2s, in Welt-before-AI order
-    out = output_root / "2026" / "05" / "2026-05-08.md"
-    body = out.read_text()
-    assert "# News-Digest 8. May 2026 (Abend)" in body
-    assert body.count("## Weltgeschehen") == 1
-    assert body.count("## AI/LLM/ML") == 1
-    welt_file_idx = body.find("## Weltgeschehen")
-    ai_file_idx = body.find("## AI/LLM/ML")
-    assert welt_file_idx < ai_file_idx, "Welt H2 must precede AI H2 in the written digest"
+    # Each category gets its own file; both must exist with the right H1
+    month = output_root / "2026" / "05"
+    world_file = month / "2026-05-08_world.md"
+    ai_file = month / "2026-05-08_ai.md"
+    assert world_file.exists(), "world digest file must exist"
+    assert ai_file.exists(), "ai digest file must exist"
+
+    world_body = world_file.read_text()
+    ai_body = ai_file.read_text()
+    assert "— Weltgeschehen (Abend)" in world_body
+    assert "— AI/LLM/ML (Abend)" in ai_body
+    # No in-file category section header (moved to H1)
+    assert "## Weltgeschehen" not in world_body
+    assert "## AI/LLM/ML" not in ai_body
+    # Items land in the right file
+    assert "Bundestag verabschiedet X" in world_body
+    assert "Claude 5 released" in ai_body
+    assert "Bundestag verabschiedet X" not in ai_body

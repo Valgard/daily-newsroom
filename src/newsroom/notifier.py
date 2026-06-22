@@ -147,23 +147,23 @@ class Notifier:
     async def notify_digest_ready(
         self,
         *,
-        slot: str,
+        category_label: str,
         item_count: int,
         file_path: Path | str,
     ) -> None:
-        """System-Notification bei fertigem Digest.
+        """System-Notification bei fertigem Kategorie-Digest.
 
         Anders als `maybe_notify`: keine Threshold-, Quiet-Hour- oder Bundling-Logik.
-        Digests sind System-Events, keine Item-Pushes — selten genug (max 2/Tag),
-        und ein gewünschtes Resultat-Signal.
+        Digests sind System-Events, keine Item-Pushes — selten genug (max 2/Tag pro
+        Kategorie), und ein gewünschtes Resultat-Signal. Eine Notification je
+        nicht-leerer Kategorie; `file_path` ist die zugehörige Kategorie-Datei.
 
         `file_path` wird als `file://`-URI an `terminal-notifier -open` übergeben,
-        damit ein Klick auf das Banner die MD-Datei im Default-Handler für `.md`
-        öffnet (Path muss absolut sein — `target_file` aus `digester` ist das).
+        damit ein Klick auf das Banner die MD-Datei im Default-Handler öffnet
+        (Path muss absolut sein — die Pfade aus `digester` sind das).
         """
-        label = "Morgen-Digest" if slot == "morning" else "Abend-Digest"
         title = "Newsroom"
-        message = f"{label} bereit ({item_count} Items)"
+        message = f"{category_label}-Digest bereit ({item_count} Items)"
         url = Path(file_path).as_uri()
         try:
             await self._send(title=title, message=message, url=url)

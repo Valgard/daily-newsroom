@@ -11,6 +11,7 @@ from newsroom.agent_client import AgentError
 from newsroom.config import Source
 from newsroom.digester import (
     NoSlotError,
+    _find_evening_section_start,
     _relative_time,
     _render_digest,
     _render_item,
@@ -80,7 +81,7 @@ def test_render_item_full_with_quote_and_cross_link(tmp_path: Path) -> None:
         now,
     )
     assert out == (
-        "### Eine Headline\n\n"
+        "## Eine Headline\n\n"
         "- [ ] interessiert mich\n\n"
         "Ein Absatz.\n\n"
         '› "Zitat."\n\n'
@@ -93,7 +94,7 @@ def test_render_item_minimal_no_quote_no_cross_link_empty_prose() -> None:
     now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
     out = _render_item(_item_row(), {"headline": "H", "prose": ""}, None, now)
     assert out == (
-        "### H\n\n"
+        "## H\n\n"
         "- [ ] interessiert mich\n\n"
         "[Weiterlesen →](https://e.x/a) · *zeit-politik · heute 04:00 · Importance 3*"
     )
@@ -221,7 +222,7 @@ async def test_generate_digest_writes_file(populated_state: State, tmp_path: Pat
         output_root=output_root,
         agent=mock_agent,
     )
-    out = output_root / "2026" / "04" / "2026-04-19.md"
+    out = output_root / "2026" / "04" / "2026-04-19_ai.md"
     assert out.exists()
     body = out.read_text()
     assert "Morgen" in body
@@ -263,12 +264,13 @@ async def test_generate_digest_marks_items_included(populated_state: State, tmp_
     assert len(rows) == 3
 
 
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_evening_appends(populated_state: State, tmp_path: Path) -> None:
     output_root = tmp_path / "news"
     # Pre-create morning file
     morning_dir = output_root / "2026" / "04"
     morning_dir.mkdir(parents=True)
-    (morning_dir / "2026-04-19.md").write_text("# Morgen Content\n")
+    (morning_dir / "2026-04-19_ai.md").write_text("# Morgen Content\n")
 
     mock_agent = AsyncMock()
     mock_agent.ask.return_value = {"items": []}
@@ -279,9 +281,9 @@ async def test_generate_digest_evening_appends(populated_state: State, tmp_path:
         output_root=output_root,
         agent=mock_agent,
     )
-    body = (morning_dir / "2026-04-19.md").read_text()
+    body = (morning_dir / "2026-04-19_ai.md").read_text()
     assert "# Morgen Content" in body
-    assert "# News-Digest 19. April 2026 (Abend)" in body
+    assert "# News-Digest 19. April 2026 — AI/LLM/ML (Abend)" in body
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -297,14 +299,12 @@ async def test_generate_digest_falls_back_on_llm_error(
         output_root=tmp_path / "news",
         agent=mock_agent,
     )
-    out = tmp_path / "news" / "2026" / "04" / "2026-04-19.md"
+    out = tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md"
     body = out.read_text()
     assert "Automatisch generiert" in body  # fallback marker
     assert "Title 0" in body  # items still listed
-    # Phase-2a: the LLM-outage fallback path must also emit the ## category
-    # boundary header (the populated_state fixture has only ai items, so just
-    # one ## AI/LLM/ML wrapper appears and no ## Weltgeschehen).
-    assert "## AI/LLM/ML" in body
+    # Phase-2b: per-category file has the category in the H1; no in-file section header.
+    assert "AI/LLM/ML" in body
     assert "## Weltgeschehen" not in body
 
 
@@ -321,7 +321,7 @@ async def test_generate_digest_fallback_emits_interest_checkbox(
         output_root=tmp_path / "news",
         agent=mock_agent,
     )
-    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
     # one unchecked "interessiert mich" box per item (shared renderer, not old fallback format)
     assert body.count("[ ] interessiert mich") == 3
     assert "Importance" in body  # degraded render still carries importance metadata
@@ -343,8 +343,8 @@ async def test_generate_digest_renders_llm_content_with_checkbox(
         output_root=tmp_path / "news",
         agent=mock_agent,
     )
-    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
-    assert "### H" in body
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert "## H" in body
     assert body.count("- [ ] interessiert mich") == len(items)
     assert "[Weiterlesen →]" in body
     assert "Importance" in body
@@ -375,8 +375,8 @@ async def test_generate_digest_skips_opus_when_claim_fails(
         agent=mock_agent,
     )
     mock_agent.ask.assert_not_called()
-    # Return value is a Path — caller can still locate the winner's output.
-    assert path is not None
+    # Race loser returns an empty list (the winner writes the files).
+    assert path == []
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -414,7 +414,7 @@ async def test_generate_digest_force_regenerates_existing(
     second_row = populated_state.get_digest("2026-04-19", "morning")
     assert second_row is not None
     # Same (date, slot) UNIQUE but new content in file
-    file_body = (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").read_text()
+    file_body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
     assert "Second-Run-Headline" in file_body
     assert "First-Run-Headline" not in file_body
 
@@ -427,9 +427,9 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
     output_root = tmp_path / "news"
     morning_dir = output_root / "2026" / "04"
     morning_dir.mkdir(parents=True)
-    (morning_dir / "2026-04-19.md").write_text(
-        "# News-Digest 19. April 2026 (Morgen)\n\nMorning body.\n\n"
-        "---\n\n# News-Digest 19. April 2026 (Abend)\n\nOld evening body.\n"
+    (morning_dir / "2026-04-19_ai.md").write_text(
+        "# News-Digest 19. April 2026 — AI/LLM/ML (Morgen)\n\nMorning body.\n\n"
+        "---\n\n# News-Digest 19. April 2026 — AI/LLM/ML (Abend)\n\nOld evening body.\n"
     )
 
     mock_agent = AsyncMock()
@@ -441,7 +441,7 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
     populated_state.insert_digest(
         date="2026-04-19",
         slot="evening",
-        file_path=str(morning_dir / "2026-04-19.md"),
+        file_path=str(morning_dir / "2026-04-19_ai.md"),
         item_count=3,
         model="claude-opus-4-7",
     )
@@ -455,7 +455,7 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
         force=True,
     )
 
-    body = (morning_dir / "2026-04-19.md").read_text()
+    body = (morning_dir / "2026-04-19_ai.md").read_text()
     # Morning section preserved
     assert "Morning body." in body
     # Old evening dropped, new evening rendered by _render_digest
@@ -478,7 +478,7 @@ async def test_generate_digest_notifies_when_items_present(
     notify_send = AsyncMock()
     notifier = Notifier(send_fn=notify_send)
 
-    out = await generate_digest(
+    await generate_digest(
         state=populated_state,
         slot="morning",
         date=datetime(2026, 4, 19).date(),
@@ -490,8 +490,9 @@ async def test_generate_digest_notifies_when_items_present(
     notify_send.assert_awaited_once()
     kwargs = notify_send.call_args.kwargs
     assert kwargs["title"] == "Newsroom"
-    assert kwargs["message"] == "Morgen-Digest bereit (3 Items)"
-    assert kwargs["url"] == out.as_uri()
+    assert kwargs["message"] == "AI/LLM/ML-Digest bereit (3 Items)"
+    expected = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").as_uri()
+    assert kwargs["url"] == expected
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -511,8 +512,8 @@ async def test_generate_digest_silent_on_empty_slot(state: State, tmp_path: Path
     )
 
     notify_send.assert_not_awaited()
-    # File-Placeholder is still written
-    assert (tmp_path / "news" / "2026" / "04" / "2026-04-19.md").exists()
+    # Empty slot writes NO file (placeholder behavior removed); the digests row records it.
+    assert list((tmp_path / "news" / "2026" / "04").glob("*.md")) == []
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -612,14 +613,14 @@ async def test_generate_digest_no_notifier_works(populated_state: State, tmp_pat
     mock_agent = AsyncMock()
     mock_agent.ask.return_value = {"items": []}
 
-    out = await generate_digest(
+    written = await generate_digest(
         state=populated_state,
         slot="morning",
         date=datetime(2026, 4, 19).date(),
         output_root=tmp_path / "news",
         agent=mock_agent,
     )
-    assert out.exists()
+    assert all(p.exists() for p in written)
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -705,6 +706,71 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
     assert len(dispatched) == 1
     assert dispatched[0].slot == "morning"
     assert dispatched[0].item_count == 3
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_splits_categories_into_two_files(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """Mixed ai+world slot writes one file per category and notifies once each."""
+    populated_state.upsert_source(
+        Source(
+            name="tagesschau",
+            category="world",
+            subcategory="news",
+            url="https://www.tagesschau.de/index~rss2.xml",
+            feed_type="rss",
+            interval_seconds=3600,
+            enabled=True,
+        )
+    )
+    world_src = populated_state.get_source_by_name("tagesschau")["id"]
+    populated_state.insert_item(
+        source_id=world_src,
+        item_hash="w0",
+        url="https://t.de/0",
+        title="Welt-Titel",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="welt summary",
+        category="world",
+    )
+    wid = populated_state.list_items_by_status("new", limit=1)[0]["id"]
+    populated_state.mark_item_scored(item_id=wid, importance=4, reason="rw", model="haiku")
+
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {"items": []}  # all items degrade — content-agnostic
+    notify_send = AsyncMock()
+    notifier = Notifier(send_fn=notify_send)
+
+    written = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+        notifier=notifier,
+    )
+
+    month = tmp_path / "news" / "2026" / "04"
+    ai_file = month / "2026-04-19_ai.md"
+    world_file = month / "2026-04-19_world.md"
+    assert set(written) == {ai_file, world_file}
+    assert ai_file.exists() and world_file.exists()
+
+    ai_body = ai_file.read_text()
+    world_body = world_file.read_text()
+    assert "— AI/LLM/ML (Morgen)" in ai_body
+    assert "— Weltgeschehen (Morgen)" in world_body
+    assert "Welt-Titel" in world_body and "Welt-Titel" not in ai_body
+    assert "## Weltgeschehen" not in world_body  # no section header inside the file
+
+    assert notify_send.await_count == 2  # noqa: PLR2004
+    messages = {c.kwargs["message"] for c in notify_send.call_args_list}
+    assert messages == {
+        "AI/LLM/ML-Digest bereit (3 Items)",
+        "Weltgeschehen-Digest bereit (1 Items)",
+    }
 
 
 # ── Phase-2a §5.1: category-boundary H2 headers ───────────────────────
@@ -811,15 +877,13 @@ def test_format_items_for_prompt_includes_id(populated_state: State) -> None:
     assert "url=" not in formatted
 
 
-def test_render_digest_groups_degrades_and_omits_separator() -> None:
+def test_render_digest_single_category_degrades_and_omits_separator() -> None:
     now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
     items = [
-        _item_row(id=1, source_category="world", title="W1"),
-        _item_row(id=2, source_category="ai", title="A1", raw_summary="ai summary"),
+        _item_row(id=1, source_category="ai", title="A1"),
+        _item_row(id=2, source_category="ai", title="A2", raw_summary="ai summary"),
     ]
-    contents = {
-        1: {"headline": "Welt-Headline", "prose": "Welt-Prosa."}
-    }  # id=2 missing -> degraded
+    contents = {1: {"headline": "AI-Headline", "prose": "AI-Prosa."}}  # id=2 -> degraded
     cross_links = {1: None, 2: None}
     out = _render_digest(
         items,
@@ -828,12 +892,11 @@ def test_render_digest_groups_degrades_and_omits_separator() -> None:
         slot="morning",
         date=datetime(2026, 4, 19).date(),
         now=now,
+        category="ai",
     )
-    assert out.startswith(
-        "# News-Digest 19. April 2026 (Morgen)\n\n## Weltgeschehen\n\n### Welt-Headline"
-    )
-    assert "## AI/LLM/ML" in out
-    assert "### A1" in out  # degraded headline = title
+    assert out.startswith("# News-Digest 19. April 2026 — AI/LLM/ML (Morgen)\n\n## AI-Headline")
+    assert "## Weltgeschehen" not in out  # category section header is gone
+    assert "## A2" in out  # degraded headline = title
     assert "ai summary" in out  # degraded prose = raw_summary
     assert "---" not in out  # separator owned by _write_digest_file
     assert out.count("- [ ] interessiert mich") == 2
@@ -849,6 +912,19 @@ def test_render_digest_banner_after_header() -> None:
         slot="morning",
         date=datetime(2026, 4, 19).date(),
         now=now,
+        category="ai",
         banner="⚠️ Test-Banner",
     )
-    assert out.startswith("# News-Digest 19. April 2026 (Morgen)\n\n⚠️ Test-Banner\n\n## AI/LLM/ML")
+    assert out.startswith(
+        "# News-Digest 19. April 2026 — AI/LLM/ML (Morgen)\n\n⚠️ Test-Banner\n\n## A1"
+    )
+
+
+def test_evening_header_re_matches_new_h1_with_category() -> None:
+    text = (
+        "# News-Digest 19. April 2026 — AI/LLM/ML (Morgen)\n\nm\n\n"
+        "---\n\n# News-Digest 19. April 2026 — AI/LLM/ML (Abend)\n\ne\n"
+    )
+    idx = _find_evening_section_start(text)
+    assert idx >= 0
+    assert text[idx:].startswith("# News-Digest 19. April 2026 — AI/LLM/ML (Abend)")
