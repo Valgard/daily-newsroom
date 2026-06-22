@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -441,7 +442,7 @@ async def test_generate_digest_force_evening_replaces_previous_evening(
     populated_state.insert_digest(
         date="2026-04-19",
         slot="evening",
-        file_path=str(morning_dir / "2026-04-19_ai.md"),
+        file_path=json.dumps([str(morning_dir / "2026-04-19_ai.md")]),
         item_count=3,
         model="claude-opus-4-7",
     )
@@ -706,6 +707,7 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
     assert len(dispatched) == 1
     assert dispatched[0].slot == "morning"
     assert dispatched[0].item_count == 3
+    assert dispatched[0].category == "ai"
 
 
 @freeze_time("2026-04-19 22:30:00")

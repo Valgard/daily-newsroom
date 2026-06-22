@@ -197,7 +197,7 @@ def _paths_from_record(raw: str | None, fallback: list[Path]) -> list[Path]:
     """Parse a digest row's `file_path` (JSON array) back into Paths.
 
     Tolerates a legacy single-path string (pre-split rows). Empty/blank value
-    (claimed but not yet finalized) → the computed `fallback` targets.
+    (claimed but not yet finalized) → caller's fallback ([] when no file yet).
     """
     if not raw:
         return fallback
