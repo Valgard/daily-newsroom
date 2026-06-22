@@ -12,6 +12,14 @@ Digest rendering is deterministic: the LLM returns typed JSON item content and
 Python renders all markdown structure. Key ADR:
 `docs/adrs/0001-deterministic-digest-rendering.md`.
 
+Digest output is split by top-level category: `generate_digest` returns
+`list[Path]`, one file per non-empty category (`{date}_{category}.md`). The H1
+carries the category label (`# News-Digest <date> — <Label> (Morgen|Abend)`).
+Item headlines are H2; there are no `## category` section headers inside a file.
+One notification fires per non-empty category file. An empty slot produces no
+file. `digests.file_path` stores a JSON array; one row per `(date, slot)` — no
+schema change.
+
 ## Invariants — DO NOT break
 
 - **Items flow through status:** `new → (filtered_in|filtered_out) → scored → notified? → included_in_digest`.
@@ -49,11 +57,18 @@ Python renders all markdown structure. Key ADR:
 - **Digest rendering is deterministic (Python, not the LLM).** `generate_digest`
   calls the LLM with `parse="json"`; it returns only per-item content
   `{"items": [{"id", "headline", "prose", "quote?"}]}`. Python (`_render_digest`
-  / `_render_item`) renders ALL structure: `###` headlines, the
+  / `_render_item`) renders ALL structure: `##` item headlines, the
   `- [ ] interessiert mich` checkbox, the `[Weiterlesen →] · *source · time ·
-  Importance N*` meta line, `## category` headers, and the H1. The LLM never
-  emits markdown structure — a format change is a code/test edit, not prompt
-  tuning. See `docs/adrs/0001-deterministic-digest-rendering.md`.
+  Importance N*` meta line, and the H1 (which includes the category label). The
+  LLM never emits markdown structure — a format change is a code/test edit, not
+  prompt tuning. There are NO `## category` section headers inside a digest file
+  (the file itself is scoped to one category). See
+  `docs/adrs/0001-deterministic-digest-rendering.md`.
+- **One digest file per top-level category per slot.** `generate_digest` returns
+  `list[Path]` — one `{date}_{category}.md` per non-empty category. An empty
+  category produces no file and no notification. `digests.file_path` is a JSON
+  array (one row per `(date, slot)`, no schema change). One `notify_digest_ready`
+  call fires per non-empty category file.
 - **The `---` morning/evening separator is owned by `_write_digest_file`** — not
   the renderer or the prompt. `_render_digest` must never emit `---`; adding one
   in the prompt or renderer creates a double-separator bug.
@@ -104,7 +119,7 @@ refactor before Phase-2 scope grows.
 ## Phase Roadmap
 
 - **Phase 1 (shipped):** AI/LLM/ML, 15 sources, twice-daily digest with H1 slot headers (`# News-Digest <date> (Morgen|Abend)`), arxiv-imp=5-only push policy. Live since 2026-04-21.
-- **Phase 2a (shipped 2026-05-08):** Weltgeschehen — second top-level category alongside `ai`. 5–7 sources in breaking/news/analysis subcategories. Per-category score prompt; subcategory-driven push thresholds via `NOTIFICATION_THRESHOLDS` table; two-section digest layout (`## Weltgeschehen` + `## AI/LLM/ML` under each slot's H1). The tagesschau-breaking-importance heuristic is deferred to Phase 2b. See spec `docs/superpowers/specs/2026-05-07-daily-newsroom-phase2a-design.md` and plan `docs/superpowers/plans/2026-05-07-daily-newsroom-phase2a.md`.
+- **Phase 2a (shipped 2026-05-08, digest split 2026-06-22):** Weltgeschehen — second top-level category alongside `ai`. 5–7 sources in breaking/news/analysis subcategories. Per-category score prompt; subcategory-driven push thresholds via `NOTIFICATION_THRESHOLDS` table. Digest output is now split by category: one file per non-empty category per slot (`{date}_{category}.md`), H1 carries the category label — replacing the former single-file two-section layout. The tagesschau-breaking-importance heuristic is deferred to Phase 2b. See spec `docs/superpowers/specs/2026-05-07-daily-newsroom-phase2a-design.md` and plan `docs/superpowers/plans/2026-05-07-daily-newsroom-phase2a.md`.
 - **Phase 2b (next):** Dresden + Dresden-Science (TU Dresden, MPI-CBG, MPI-PKS, HZDR Excellence Cluster). Builds on Phase-2a mechanism — mostly YAML + prompt edits.
 - **Phase 3:** Tech, Wissenschaft (Physik/Chemie/Astro), APOD.
 
