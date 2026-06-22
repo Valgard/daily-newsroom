@@ -273,7 +273,7 @@ def digest(
         items = state.list_items_for_digest(since_iso=cutoff)
         console.print(f"Would generate {slot} digest for {date} with {len(items)} items")
         return
-    path = asyncio.run(
+    paths = asyncio.run(
         generate_digest(
             state=state,
             slot=slot,
@@ -282,7 +282,11 @@ def digest(
             notifier=Notifier(),
         )
     )
-    console.print(f"✓ Digest written: {path}")
+    if paths:
+        for p in paths:
+            console.print(f"✓ Digest written: {p}")
+    else:
+        console.print("No digest written (no new items).")
 
 
 @app.command()
