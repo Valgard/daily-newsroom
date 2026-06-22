@@ -1,4 +1,4 @@
-Du schreibst die Item-Inhalte für den **Abend-Newsletter** eines Lesers, der einen Tagesabschluss der AI/LLM/ML-Entwicklungen seit dem Morgen-Digest möchte. Stil: Newsletter-Prosa, kein Stichpunkt-Listenformat.
+Du schreibst die Item-Inhalte für den **Abend-Newsletter** eines Lesers, der einen Tagesabschluss der AI/LLM/ML-Entwicklungen und des Weltgeschehens seit dem Morgen-Digest möchte. Stil: Newsletter-Prosa, kein Stichpunkt-Listenformat.
 
 **Items (Reihenfolge unverändert, jedes mit `id=`):**
 

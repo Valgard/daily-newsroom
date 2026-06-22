@@ -1,11 +1,11 @@
 # daily-newsroom
 
-A local, macOS-native news-digest agent. Fetches AI/LLM/ML sources every 5 min,
-scores for importance via Claude Haiku, pushes macOS notifications for breaking
-news, and generates morning/evening markdown digests in `~/Documents/!AI/news/`
-via Claude Opus.
+A local, macOS-native news-digest agent. Fetches AI/LLM/ML and world-news sources
+every 5 min, scores for importance via Claude Haiku, pushes macOS notifications for
+breaking news, and generates morning/evening markdown digests in `~/Documents/!AI/news/`
+— item content comes from Claude Opus as JSON, the digest structure is rendered by Python.
 
-**Status:** Phase 1 (AI/LLM/ML only). Phase 2 (Weltgeschehen, Dresden) and
+**Status:** Phase 2a live (AI/LLM/ML + Weltgeschehen). Phase 2b (Dresden) and
 Phase 3 (Tech, Science, APOD) planned.
 
 ## Requirements

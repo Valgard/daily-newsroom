@@ -8,6 +8,10 @@ never persistent daemon.
 
 Full design: `docs/superpowers/specs/2026-04-19-daily-newsroom-design.md`.
 
+Digest rendering is deterministic: the LLM returns typed JSON item content and
+Python renders all markdown structure. Key ADR:
+`docs/adrs/0001-deterministic-digest-rendering.md`.
+
 ## Invariants — DO NOT break
 
 - **Items flow through status:** `new → (filtered_in|filtered_out) → scored → notified? → included_in_digest`.
@@ -26,9 +30,8 @@ Full design: `docs/superpowers/specs/2026-04-19-daily-newsroom-design.md`.
   launchd plists MUST set PATH to include the `claude` binary location.
 - The `pync` package is a macOS-only wrapper around `terminal-notifier`. In tests, inject
   `send_fn` into `Notifier(…)` to avoid hitting the real Notification Center.
-- Always `import` `feedparser` inside functions — it has slow top-level imports that bloat
-  cold-start time of every launchd trigger. (Actually, imported at module level in `fetcher.py`
-  is fine — this note is a reminder if you see perf issues.)
+- `feedparser` is imported at module level in `fetcher.py` — that is fine. If launchd
+  cold-start time ever becomes a problem, consider importing it lazily inside functions instead.
 - The cross-link lookup in `digester._resolve_cross_link` does a full-text scan of
   `!AI/article_summaries/`. If that directory grows to thousands of files, introduce a
   pre-built URL index.
@@ -43,6 +46,22 @@ Full design: `docs/superpowers/specs/2026-04-19-daily-newsroom-design.md`.
   file or the agent_client will raise `KeyError` / `FileNotFoundError` on
   every item from that category. Side effect: items with `category` typos
   (e.g. `worldd`) silently fail with a log warning, not a hard error.
+- **Digest rendering is deterministic (Python, not the LLM).** `generate_digest`
+  calls the LLM with `parse="json"`; it returns only per-item content
+  `{"items": [{"id", "headline", "prose", "quote?"}]}`. Python (`_render_digest`
+  / `_render_item`) renders ALL structure: `###` headlines, the
+  `- [ ] interessiert mich` checkbox, the `[Weiterlesen →] · *source · time ·
+  Importance N*` meta line, `## category` headers, and the H1. The LLM never
+  emits markdown structure — a format change is a code/test edit, not prompt
+  tuning. See `docs/adrs/0001-deterministic-digest-rendering.md`.
+- **The `---` morning/evening separator is owned by `_write_digest_file`** — not
+  the renderer or the prompt. `_render_digest` must never emit `---`; adding one
+  in the prompt or renderer creates a double-separator bug.
+- **Missing/unknown LLM item ids degrade gracefully.** An item absent from the
+  JSON response renders from the DB row (`headline` = `title`, `prose` =
+  `raw_summary[:1200]`) so no item is ever dropped; a `logger.warning` fires on
+  partial id mismatch. A full LLM outage renders every item degraded under a
+  "⚠️ Automatisch generiert" banner.
 
 ## Known Architecture Deferrals
 
@@ -74,11 +93,18 @@ refactor before Phase-2 scope grows.
 - TDD: write failing test, implement, pass, commit.
 - Branch naming (if multi-branch work): ticket-key only (not used for this solo project).
 - Coverage target: 70% in `src/newsroom/`.
+- **Run tests/lint with the asdf prefix:** `ASDF_PYTHON_VERSION=3.12.9 uv run pytest …`
+  and `… uv run ruff …`. Without it asdf errors "No version is set for command python3"
+  (the interpreter is not pinned via `.tool-versions`).
+- **Design specs go to `docs/specs/YYYY-MM-DD-<slug>-design.md`** — a PostToolUse hook
+  blocks writes to `docs/superpowers/specs/` (pre-existing specs there stay tracked).
+  ADRs go to `docs/adrs/NNN-<slug>.md` (MADR 4.0); the raw spec is deleted and the ADR
+  added in one atomic commit (global CLAUDE.md C+D pattern).
 
 ## Phase Roadmap
 
 - **Phase 1 (shipped):** AI/LLM/ML, 15 sources, twice-daily digest with H1 slot headers (`# News-Digest <date> (Morgen|Abend)`), arxiv-imp=5-only push policy. Live since 2026-04-21.
-- **Phase 2a (in progress):** Weltgeschehen — second top-level category alongside `ai`. 5–7 sources in breaking/news/analysis subcategories. Per-category score prompt; subcategory-driven push thresholds via `NOTIFICATION_THRESHOLDS` table; two-section digest layout (`## Weltgeschehen` + `## AI/LLM/ML` under each slot's H1). See spec `docs/superpowers/specs/2026-05-07-daily-newsroom-phase2a-design.md` and plan `docs/superpowers/plans/2026-05-07-daily-newsroom-phase2a.md`.
+- **Phase 2a (shipped 2026-05-08):** Weltgeschehen — second top-level category alongside `ai`. 5–7 sources in breaking/news/analysis subcategories. Per-category score prompt; subcategory-driven push thresholds via `NOTIFICATION_THRESHOLDS` table; two-section digest layout (`## Weltgeschehen` + `## AI/LLM/ML` under each slot's H1). The tagesschau-breaking-importance heuristic is deferred to Phase 2b. See spec `docs/superpowers/specs/2026-05-07-daily-newsroom-phase2a-design.md` and plan `docs/superpowers/plans/2026-05-07-daily-newsroom-phase2a.md`.
 - **Phase 2b (next):** Dresden + Dresden-Science (TU Dresden, MPI-CBG, MPI-PKS, HZDR Excellence Cluster). Builds on Phase-2a mechanism — mostly YAML + prompt edits.
 - **Phase 3:** Tech, Wissenschaft (Physik/Chemie/Astro), APOD.
 

@@ -36,9 +36,9 @@ CATEGORY_LABEL = {"world": "Weltgeschehen", "ai": "AI/LLM/ML"}
 def _format_top_header(date: _date, slot: str) -> str:
     """Canonical digest top-header: ``# News-Digest <date_de> (Morgen|Abend)``.
 
-    Single source of truth for the empty-digest and LLM-fallback code paths.
-    The digest_*.md prompts embed this exact format so Opus output stays
-    symmetric with the code-emitted fallbacks.
+    Single source of truth for the H1 across all rendering paths: the main
+    render (`_render_digest`), the empty-digest branch, and the degraded
+    LLM-outage path.
     """
     date_de = date.strftime("%-d. %B %Y")
     return f"# News-Digest {date_de} ({SLOT_LABEL_DE[slot]})"

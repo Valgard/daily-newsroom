@@ -1,4 +1,4 @@
-Du schreibst die Item-Inhalte für den **Morgen-Newsletter** eines Lesers, der AI/LLM/ML-Entwicklungen verfolgt — Practitioner, nicht Laie. Stil: Newsletter-Prosa, kein Stichpunkt-Listenformat.
+Du schreibst die Item-Inhalte für den **Morgen-Newsletter** eines Lesers, der AI/LLM/ML-Entwicklungen und das Weltgeschehen verfolgt — Practitioner, nicht Laie. Stil: Newsletter-Prosa, kein Stichpunkt-Listenformat.
 
 **Items (Reihenfolge unverändert, jedes mit `id=`):**
 
