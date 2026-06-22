@@ -120,3 +120,18 @@ git show "$(git rev-list -1 HEAD -- docs/specs/2026-06-21-deterministic-digest-r
 ~~~
 
 Implementation landed in commits `936c1bf`..`05e6330` on `main`.
+
+### Later refinement (2026-06-22): per-category digest files
+
+The single-file, two-section layout this ADR reproduced byte-for-byte was later
+superseded by a per-category split: `generate_digest` now renders one file per
+non-empty top-level category (`{date}_{category}.md`), moves the category label
+into the H1, promotes item headlines `###` → `##`, and drops the in-file
+`## category` section header (the file itself is scoped to one category). This
+does **not** change this ADR's decision — Python still owns all structure
+deterministically through one `_render_item`/`_render_digest` path, and the
+LLM-outage fallback still shares it; the split only re-partitions that output and
+fires one notification per non-empty category. `digests.file_path` became a JSON
+array (one row per `(date, slot)`, no schema migration). The decision was judged a
+refinement of this ADR rather than a standalone ADR. Design record (kept in-tree):
+`docs/specs/2026-06-22-category-split-digest-files-design.md`.
