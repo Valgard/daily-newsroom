@@ -771,7 +771,7 @@ async def test_generate_digest_splits_categories_into_two_files(
     messages = {c.kwargs["message"] for c in notify_send.call_args_list}
     assert messages == {
         "AI/LLM/ML-Digest bereit (3 Items)",
-        "Weltgeschehen-Digest bereit (1 Items)",
+        "Weltgeschehen-Digest bereit (1 Item)",
     }
 
 

@@ -29,7 +29,7 @@ EVENING_START_HOUR = 16
 EVENING_END_HOUR = 24  # exclusive
 
 SLOT_LABEL_DE = {"morning": "Morgen", "evening": "Abend"}
-# Top-level category → digest H2 label. Unknown categories fall back to
+# Top-level category → digest H1 category label. Unknown categories fall back to
 # `.capitalize()` at the call site (Phase-2b/3 readiness: `dresden` → "Dresden").
 CATEGORY_LABEL = {"world": "Weltgeschehen", "ai": "AI/LLM/ML"}
 

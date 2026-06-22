@@ -163,7 +163,8 @@ class Notifier:
         (Path muss absolut sein — die Pfade aus `digester` sind das).
         """
         title = "Newsroom"
-        message = f"{category_label}-Digest bereit ({item_count} Items)"
+        item_word = "Item" if item_count == 1 else "Items"
+        message = f"{category_label}-Digest bereit ({item_count} {item_word})"
         url = Path(file_path).as_uri()
         try:
             await self._send(title=title, message=message, url=url)
