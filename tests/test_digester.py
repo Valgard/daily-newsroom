@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from freezegun import freeze_time
 
-from newsroom.agent_client import AgentError
+from newsroom.agent_client import AgentError, ParseError
 from newsroom.config import Source
 from newsroom.digester import (
     NoSlotError,
@@ -326,6 +326,66 @@ async def test_generate_digest_fallback_emits_interest_checkbox(
     # one unchecked "interessiert mich" box per item (shared renderer, not old fallback format)
     assert body.count("[ ] interessiert mich") == 3
     assert "Importance" in body  # degraded render still carries importance metadata
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_banner_names_unparseable_response(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """A malformed response must not be reported to the reader as an outage."""
+    mock_agent = AsyncMock()
+    mock_agent.ask.side_effect = ParseError("invalid JSON in response: Expecting ',' delimiter")
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert "Automatisch generiert" in body
+    assert "nicht verwertbar" in body
+    assert "nicht erreichbar" not in body
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_banner_names_outage(populated_state: State, tmp_path: Path) -> None:
+    """A genuine outage keeps saying so — the two causes stay distinguishable."""
+    mock_agent = AsyncMock()
+    mock_agent.ask.side_effect = AgentError("opus unavailable")
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert "nicht erreichbar" in body
+    assert "nicht verwertbar" not in body
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_dumps_raw_response_on_parse_error(
+    populated_state: State, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The log truncates at 200 chars, so the break point was never visible. Dump it all."""
+    error = ParseError("invalid JSON in response: Expecting ',' delimiter")
+    error.raw_response = '{"items": [{"id": 1, "headline": "Er nannte es "Zäsur""}]}'
+    mock_agent = AsyncMock()
+    mock_agent.ask.side_effect = error
+    dump_dir = tmp_path / "parse-failures"
+    monkeypatch.setattr("newsroom.digester.PARSE_FAILURE_DIR", dump_dir)
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    dumps = sorted(dump_dir.glob("*.txt"))
+    assert len(dumps) == 1
+    assert error.raw_response in dumps[0].read_text()
 
 
 @freeze_time("2026-04-19 22:30:00")

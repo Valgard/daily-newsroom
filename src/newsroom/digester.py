@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from newsroom.agent_client import AgentClient
+from newsroom.agent_client import AgentClient, ParseError
+from newsroom.logging_setup import LOG_DIR
 
 if TYPE_CHECKING:
     from newsroom.notifier import Notifier
@@ -32,6 +33,19 @@ SLOT_LABEL_DE = {"morning": "Morgen", "evening": "Abend"}
 # Top-level category → digest H1 category label. Unknown categories fall back to
 # `.capitalize()` at the call site (Phase-2b/3 readiness: `dresden` → "Dresden").
 CATEGORY_LABEL = {"world": "Weltgeschehen", "ai": "AI/LLM/ML"}
+
+# Degraded-render banners. The two causes stay distinguishable on purpose: for a year
+# every degraded digest claimed an outage, while the logs showed Opus had answered and
+# only the JSON was malformed — the banner sent every diagnosis down the wrong path.
+BANNER_UNREACHABLE = (
+    "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)"
+)
+BANNER_UNPARSEABLE = (
+    "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus-Antwort war nicht verwertbar)"
+)
+
+# Unparseable responses are dumped here in full; the log message truncates at 200 chars.
+PARSE_FAILURE_DIR = LOG_DIR / "parse-failures"
 
 
 def _format_top_header(date: _date, slot: str, category: str) -> str:
@@ -207,6 +221,25 @@ def _paths_from_record(raw: str | None, fallback: list[Path]) -> list[Path]:
         return [Path(raw)]
 
 
+def _dump_parse_failure(raw: str, *, slot: str, date: _date) -> Path | None:
+    """Persist the full unparseable response for diagnosis. Best-effort by design.
+
+    Returns the written path, or None when there was nothing to write or writing
+    failed — a failed dump must never cost the reader their digest.
+    """
+    if not raw:
+        return None
+    try:
+        PARSE_FAILURE_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(BERLIN_TZ).strftime("%H%M%S")
+        path = PARSE_FAILURE_DIR / f"{date.isoformat()}-{slot}-{stamp}.txt"
+        path.write_text(raw)
+    except OSError as e:
+        logger.warning("could not write parse-failure dump: %s", e)
+        return None
+    return path
+
+
 async def generate_digest(  # noqa: PLR0912, PLR0915
     *,
     state,  # noqa: ANN001
@@ -272,9 +305,15 @@ async def generate_digest(  # noqa: PLR0912, PLR0915
             parse="json",
         )
         contents_by_id = {int(c["id"]): c for c in result.get("items", []) if "id" in c}
+    except ParseError as e:
+        logger.warning("Opus response unparseable after retries, using degraded render: %s", e)
+        dump_path = _dump_parse_failure(e.raw_response, slot=slot, date=date)
+        if dump_path is not None:
+            logger.warning("full unparseable response saved to %s", dump_path)
+        banner = BANNER_UNPARSEABLE
     except Exception as e:  # noqa: BLE001
         logger.warning("Opus digest call failed, using degraded render: %s", e)
-        banner = "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)"
+        banner = BANNER_UNREACHABLE
 
     if banner is None:
         matched = sum(1 for item in items if item["id"] in contents_by_id)
