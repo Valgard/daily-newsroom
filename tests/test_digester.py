@@ -389,6 +389,34 @@ async def test_generate_digest_dumps_raw_response_on_parse_error(
 
 
 @freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_survives_unwritable_dump(
+    populated_state: State, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dump is diagnostics, the digest is the product.
+
+    A lone surrogate in the response makes `write_text` raise UnicodeEncodeError —
+    a ValueError, not an OSError. If that escapes, it takes generate_digest with it,
+    and the slot stays claimed-but-unfinalised: every later run skips it silently.
+    """
+    error = ParseError("invalid JSON in response")
+    error.raw_response = "Antwort mit einem einsamen Surrogat \ud800 darin"
+    mock_agent = AsyncMock()
+    mock_agent.ask.side_effect = error
+    monkeypatch.setattr("newsroom.digester.PARSE_FAILURE_DIR", tmp_path / "parse-failures")
+    written = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert "nicht verwertbar" in body
+    assert written, "slot must be finalised, not left claimed"
+    assert populated_state.get_digest("2026-04-19", "morning")["item_count"] == 3
+
+
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_renders_llm_content_with_checkbox(
     populated_state: State, tmp_path: Path
 ) -> None:

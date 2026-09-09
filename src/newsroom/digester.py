@@ -233,8 +233,12 @@ def _dump_parse_failure(raw: str, *, slot: str, date: _date) -> Path | None:
         PARSE_FAILURE_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(BERLIN_TZ).strftime("%H%M%S")
         path = PARSE_FAILURE_DIR / f"{date.isoformat()}-{slot}-{stamp}.txt"
-        path.write_text(raw)
-    except OSError as e:
+        # errors="replace": a malformed response is exactly where a lone surrogate
+        # turns up, and an unwritable character must not cost the digest.
+        path.write_text(raw, encoding="utf-8", errors="replace")
+    except Exception as e:  # noqa: BLE001 — diagnostics must never outrank the digest
+        # Deliberately broad: this runs after claim_digest_slot, so anything escaping
+        # here leaves the slot claimed-but-unfinalised and every later run skips it.
         logger.warning("could not write parse-failure dump: %s", e)
         return None
     return path
