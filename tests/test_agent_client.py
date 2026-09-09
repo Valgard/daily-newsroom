@@ -90,6 +90,52 @@ async def test_ask_recovers_when_retry_returns_valid_json(
     assert mock_query.call_count == 2
 
 
+async def test_ask_does_not_retry_parse_error_when_caller_opts_out(
+    fixtures_dir: Path, instant_retry: None
+) -> None:
+    """Per-item callers get their retry free from the next cycle, so they opt out.
+
+    The digest call is expensive and cannot be repeated until the next slot; a
+    per-item call is cheap and comes back in five minutes anyway, where the same
+    backoff would only block the sequential loop.
+    """
+    client = AgentClient(prompts_dir=fixtures_dir)
+    with patch("newsroom.agent_client.query") as mock_query:
+        mock_query.side_effect = lambda **_: _mock_stream("not-json-at-all")
+        with pytest.raises(ParseError):
+            await client.ask(
+                prompt_name="prompt_test_echo",
+                variables={"value": "x"},
+                model="claude-haiku-4-5",
+                parse="json",
+                retry_parse=False,
+            )
+    assert mock_query.call_count == 1
+
+
+async def test_ask_still_retries_agent_error_when_parse_retry_is_off(
+    fixtures_dir: Path, instant_retry: None
+) -> None:
+    """Opting out of parse retries must not disable the outage retry."""
+
+    async def _empty_stream():
+        return
+        yield  # make this a generator function
+
+    client = AgentClient(prompts_dir=fixtures_dir)
+    with patch("newsroom.agent_client.query") as mock_query:
+        mock_query.side_effect = lambda **_: _empty_stream()
+        with pytest.raises(AgentError):
+            await client.ask(
+                prompt_name="prompt_test_echo",
+                variables={"value": "x"},
+                model="claude-haiku-4-5",
+                parse="json",
+                retry_parse=False,
+            )
+    assert mock_query.call_count == 3
+
+
 async def test_ask_rejects_json_array_as_parse_error(fixtures_dir: Path) -> None:
     """An array satisfies "valid JSON" but not the object contract callers rely on.
 

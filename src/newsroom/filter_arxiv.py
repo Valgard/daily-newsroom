@@ -27,6 +27,8 @@ async def filter_pending_arxiv_items(state, agent: AgentClient | None = None) ->
                 },
                 model="claude-haiku-4-5",
                 parse="json",
+                # Same reasoning as the scorer: the next cycle is the cheaper retry.
+                retry_parse=False,
             )
             relevant = bool(result.get("relevant", False))
             state.mark_item_arxiv_filter(item_id=item["id"], relevant=relevant)

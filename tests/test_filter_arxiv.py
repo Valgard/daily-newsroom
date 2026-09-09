@@ -51,6 +51,14 @@ async def test_filter_marks_relevant_items_filtered_in(state_with_arxiv_item: St
     assert row["arxiv_relevant"] == 1
 
 
+async def test_filter_opts_out_of_parse_retries(state_with_arxiv_item: State) -> None:
+    """Same reasoning as the scorer: the next cycle is the cheaper retry."""
+    mock_client = AsyncMock()
+    mock_client.ask.return_value = {"relevant": True, "reason": "agent memory"}
+    await filter_pending_arxiv_items(state_with_arxiv_item, agent=mock_client)
+    assert mock_client.ask.call_args.kwargs["retry_parse"] is False
+
+
 async def test_filter_marks_irrelevant_filtered_out(state_with_arxiv_item: State) -> None:
     mock_client = AsyncMock()
     mock_client.ask.return_value = {"relevant": False, "reason": "medical imaging"}

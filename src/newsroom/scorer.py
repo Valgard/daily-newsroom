@@ -38,6 +38,10 @@ async def score_pending_items(
                 },
                 model=SCORING_MODEL,
                 parse="json",
+                # No parse retry here: a failed item stays pending and the next
+                # cycle re-scores it in five minutes, while retrying would block
+                # this sequential loop for ten seconds per item.
+                retry_parse=False,
             )
             try:
                 importance = int(result.get("importance", 2))

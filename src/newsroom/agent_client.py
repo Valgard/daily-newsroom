@@ -10,7 +10,7 @@ from typing import Any, Literal
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -30,6 +30,8 @@ class ParseError(Exception):
     def __init__(self, message: str, raw_response: str = "") -> None:
         super().__init__(message)
         self.raw_response = raw_response
+        # Set by AgentClient.ask from its retry_parse argument; see _should_retry.
+        self.retryable = True
 
 
 class AgentError(Exception):
@@ -90,6 +92,21 @@ def _extract_json(text: str) -> dict[str, Any]:
     return parsed
 
 
+def _should_retry(exc: BaseException) -> bool:
+    """Outages always retry; malformed responses only where the caller opted in.
+
+    The digest makes one expensive call that cannot be repeated until the next slot,
+    so retrying a malformed response there saves half a day of digest. The per-item
+    callers (scorer, arxiv filter) are handed a free retry by the next cycle five
+    minutes later, where the same backoff would only block their sequential loop.
+    """
+    if isinstance(exc, AgentError):
+        return True
+    if isinstance(exc, ParseError):
+        return exc.retryable
+    return False
+
+
 class AgentClient:
     """Call Claude via claude-agent-sdk with prompt templating."""
 
@@ -97,11 +114,12 @@ class AgentClient:
         self.prompts_dir = prompts_dir
 
     @retry(
-        # ParseError is retryable too: the model is non-deterministic, so a malformed
-        # response is usually fixed by asking again. Without it a single stray quote
-        # in the JSON went straight to a degraded digest — the dominant failure mode
-        # in practice, not an edge case. Measurement in the commit that added this.
-        retry=retry_if_exception_type((AgentError, ParseError)),
+        # Malformed responses are retryable too: the model is non-deterministic, so
+        # asking again usually fixes them. Without that, a single stray quote in the
+        # JSON went straight to a degraded digest — the dominant failure mode in
+        # practice, not an edge case. Measurement in the commit that added this.
+        # _should_retry lets per-item callers opt out; see its docstring.
+        retry=retry_if_exception(_should_retry),
         wait=wait_exponential(multiplier=2, min=5, max=60),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -113,8 +131,14 @@ class AgentClient:
         variables: dict[str, Any],
         model: str,
         parse: ParseMode = "json",
+        retry_parse: bool = True,
     ) -> Any:
-        """Run a prompt and return parsed result."""
+        """Run a prompt and return parsed result.
+
+        `retry_parse=False` disables retrying on a malformed response — for callers
+        that are re-run on a short cycle anyway, where the backoff costs more than
+        the retry saves. Outage retries are unaffected either way.
+        """
         prompt_path = self.prompts_dir / f"{prompt_name}.md"
         prompt_text = render_prompt(prompt_path, variables)
 
@@ -134,7 +158,13 @@ class AgentClient:
             raise AgentError("agent returned no ResultMessage")
 
         if parse == "json":
-            return _extract_json(last_result)
+            try:
+                return _extract_json(last_result)
+            except ParseError as e:
+                # Tag and re-raise unchanged: the retry predicate reads this, and the
+                # caller still receives the original error with its raw_response.
+                e.retryable = retry_parse
+                raise
         elif parse == "text":
             return last_result
         else:

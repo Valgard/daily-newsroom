@@ -69,6 +69,19 @@ async def test_scorer_limits_batch_size(state_with_items: State) -> None:
     assert len(remaining) == 1
 
 
+async def test_scorer_opts_out_of_parse_retries(state_with_items: State) -> None:
+    """Per-item scoring must not pay for retries the next cycle provides for free.
+
+    Retrying here costs three Haiku calls plus ten seconds of blocking backoff in a
+    sequential loop, for an item that comes back around in five minutes anyway.
+    """
+    mock_client = AsyncMock()
+    mock_client.ask.return_value = {"importance": 3, "reason": "ok"}
+    notifier_mock = AsyncMock()
+    await score_pending_items(state_with_items, agent=mock_client, notifier=notifier_mock, limit=1)
+    assert mock_client.ask.call_args.kwargs["retry_parse"] is False
+
+
 async def test_scorer_leaves_item_on_parse_error(state_with_items: State) -> None:
     mock_client = AsyncMock()
     mock_client.ask.side_effect = ParseError("bad JSON")
