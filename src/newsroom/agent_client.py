@@ -22,8 +22,9 @@ DEFAULT_PROMPTS_DIR = Path(__file__).parent.parent.parent / "config" / "prompts"
 class ParseError(Exception):
     """LLM response could not be parsed as expected.
 
-    Carries the *full* response in `raw_response`: the message truncates the
-    candidate at 200 chars, which regularly cut off the actual break point.
+    Carries the *full* response in `raw_response`. The exception message truncates
+    for readability in the log, which routinely cut the break point out of the
+    record — the break is often thousands of characters in.
     """
 
     def __init__(self, message: str, raw_response: str = "") -> None:
@@ -75,12 +76,18 @@ def _extract_json(text: str) -> dict[str, Any]:
             raise ParseError(f"no JSON object found in response: {text[:200]!r}", raw_response=text)
         candidate = obj_match.group(0)
     try:
-        return json.loads(candidate)
+        parsed = json.loads(candidate)
     except json.JSONDecodeError as e:
         raise ParseError(
             f"invalid JSON in response: {e}; candidate={candidate[:200]!r}",
             raw_response=text,
         ) from e
+    if not isinstance(parsed, dict):
+        # An array is valid JSON but not the contract callers rely on. Raising
+        # ParseError keeps it retryable and keeps it out of the "outage" banner;
+        # an AttributeError at the call site would be neither.
+        raise ParseError(f"expected JSON object, got {type(parsed).__name__}", raw_response=text)
+    return parsed
 
 
 class AgentClient:
@@ -92,7 +99,8 @@ class AgentClient:
     @retry(
         # ParseError is retryable too: the model is non-deterministic, so a malformed
         # response is usually fixed by asking again. Without it a single stray quote
-        # in the JSON went straight to a degraded digest (~7% of runs).
+        # in the JSON went straight to a degraded digest — the dominant failure mode
+        # in practice, not an edge case. Measurement in the commit that added this.
         retry=retry_if_exception_type((AgentError, ParseError)),
         wait=wait_exponential(multiplier=2, min=5, max=60),
         stop=stop_after_attempt(3),

@@ -90,6 +90,26 @@ async def test_ask_recovers_when_retry_returns_valid_json(
     assert mock_query.call_count == 2
 
 
+async def test_ask_rejects_json_array_as_parse_error(fixtures_dir: Path) -> None:
+    """An array satisfies "valid JSON" but not the object contract callers rely on.
+
+    Left through, `result.get("items")` raises AttributeError — no ParseError, so no
+    retry, and the digest blames an outage that never happened.
+    """
+    client = AgentClient(prompts_dir=fixtures_dir)
+    with patch("newsroom.agent_client.query") as mock_query:
+        mock_query.return_value = _mock_stream('```json\n[{"id": 1}]\n```')
+        with pytest.raises(ParseError, match="expected JSON object"):
+            # Call __wrapped__ to bypass tenacity retries (avoids backoff delays)
+            await client.ask.__wrapped__(
+                client,
+                prompt_name="prompt_test_echo",
+                variables={"value": "x"},
+                model="claude-haiku-4-5",
+                parse="json",
+            )
+
+
 async def test_parse_error_carries_full_raw_response(fixtures_dir: Path) -> None:
     """The log truncates at 200 chars; the exception must carry the whole response."""
     broken = '{"items": [{"id": 1, "headline": "Er nannte es "Zäsur" fuer die CDU"}]}' + "x" * 500
