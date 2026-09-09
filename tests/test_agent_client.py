@@ -10,10 +10,12 @@ from newsroom.agent_client import AgentClient, AgentError, ParseError, render_pr
 
 @pytest.fixture
 def instant_retry(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Drop tenacity's 5-60s backoff so retry behaviour itself stays testable.
+    """Drop tenacity's backoff so retry behaviour itself stays testable.
 
-    The other tests bypass the decorator via `__wrapped__` to stay fast; tests that
-    assert on retrying must go *through* it, and would otherwise sleep 15s.
+    Failure-path tests bypass the decorator via `__wrapped__` so they don't sit
+    through the wait; a test that asserts *on* retrying has to go through it and
+    needs the wait removed instead. Success-path tests need neither — a
+    first-attempt success never waits.
     """
     monkeypatch.setattr(AgentClient.ask.retry, "wait", wait_none())
 
@@ -47,7 +49,7 @@ async def test_ask_raises_on_invalid_json(fixtures_dir: Path) -> None:
     with patch("newsroom.agent_client.query") as mock_query:
         mock_query.return_value = _mock_stream("not-json-at-all")
         with pytest.raises(ParseError):
-            # Call __wrapped__ to bypass tenacity retries (avoids 5-60s backoff delays)
+            # Call __wrapped__ to bypass tenacity retries (avoids backoff delays)
             await client.ask.__wrapped__(
                 client,
                 prompt_name="prompt_test_echo",
@@ -163,7 +165,7 @@ async def test_parse_error_carries_full_raw_response(fixtures_dir: Path) -> None
     with patch("newsroom.agent_client.query") as mock_query:
         mock_query.return_value = _mock_stream(broken)
         with pytest.raises(ParseError) as exc_info:
-            # Call __wrapped__ to bypass tenacity retries (avoids 5-60s backoff delays)
+            # Call __wrapped__ to bypass tenacity retries (avoids backoff delays)
             await client.ask.__wrapped__(
                 client,
                 prompt_name="prompt_test_echo",
@@ -196,7 +198,7 @@ async def test_ask_raises_agent_error_on_empty_stream(fixtures_dir: Path) -> Non
     with patch("newsroom.agent_client.query") as mock_query:
         mock_query.return_value = _empty_stream()
         with pytest.raises(AgentError, match="no ResultMessage"):
-            # Call __wrapped__ to bypass tenacity retries (avoids 5-60s backoff delays)
+            # Call __wrapped__ to bypass tenacity retries (avoids backoff delays)
             await client.ask.__wrapped__(
                 client,
                 prompt_name="prompt_test_echo",
@@ -215,7 +217,7 @@ async def test_ask_wraps_sdk_exception_as_agent_error(fixtures_dir: Path) -> Non
     with patch("newsroom.agent_client.query") as mock_query:
         mock_query.return_value = _exploding_stream()
         with pytest.raises(AgentError, match="agent call failed"):
-            # Call __wrapped__ to bypass tenacity retries (avoids 5-60s backoff delays)
+            # Call __wrapped__ to bypass tenacity retries (avoids backoff delays)
             await client.ask.__wrapped__(
                 client,
                 prompt_name="prompt_test_echo",

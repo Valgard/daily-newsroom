@@ -224,8 +224,10 @@ def _paths_from_record(raw: str | None, fallback: list[Path]) -> list[Path]:
 def _dump_parse_failure(raw: str, *, slot: str, date: _date) -> Path | None:
     """Persist the full unparseable response for diagnosis. Best-effort by design.
 
-    Returns the written path, or None when there was nothing to write or writing
-    failed — a failed dump must never cost the reader their digest.
+    Never raises: returns the written path, or None when there was nothing to write
+    or the write failed. Callers run inside an exception handler after the digest
+    slot is claimed, so anything escaping here would leave that slot claimed but
+    unfinalised, and every later run would skip it.
     """
     if not raw:
         return None
