@@ -20,7 +20,15 @@ DEFAULT_PROMPTS_DIR = Path(__file__).parent.parent.parent / "config" / "prompts"
 
 
 class ParseError(Exception):
-    """LLM response could not be parsed as expected."""
+    """LLM response could not be parsed as expected.
+
+    Carries the *full* response in `raw_response`: the message truncates the
+    candidate at 200 chars, which regularly cut off the actual break point.
+    """
+
+    def __init__(self, message: str, raw_response: str = "") -> None:
+        super().__init__(message)
+        self.raw_response = raw_response
 
 
 class AgentError(Exception):
@@ -64,12 +72,15 @@ def _extract_json(text: str) -> dict[str, Any]:
         # Greedy match: first { … last } across the whole text
         obj_match = re.search(r"\{.*\}", text, re.DOTALL)
         if not obj_match:
-            raise ParseError(f"no JSON object found in response: {text[:200]!r}")
+            raise ParseError(f"no JSON object found in response: {text[:200]!r}", raw_response=text)
         candidate = obj_match.group(0)
     try:
         return json.loads(candidate)
     except json.JSONDecodeError as e:
-        raise ParseError(f"invalid JSON in response: {e}; candidate={candidate[:200]!r}") from e
+        raise ParseError(
+            f"invalid JSON in response: {e}; candidate={candidate[:200]!r}",
+            raw_response=text,
+        ) from e
 
 
 class AgentClient:
@@ -79,7 +90,10 @@ class AgentClient:
         self.prompts_dir = prompts_dir
 
     @retry(
-        retry=retry_if_exception_type(AgentError),
+        # ParseError is retryable too: the model is non-deterministic, so a malformed
+        # response is usually fixed by asking again. Without it a single stray quote
+        # in the JSON went straight to a degraded digest (~7% of runs).
+        retry=retry_if_exception_type((AgentError, ParseError)),
         wait=wait_exponential(multiplier=2, min=5, max=60),
         stop=stop_after_attempt(3),
         reraise=True,

@@ -3,8 +3,19 @@ from unittest.mock import patch
 
 import pytest
 from claude_agent_sdk import ResultMessage
+from tenacity import wait_none
 
 from newsroom.agent_client import AgentClient, AgentError, ParseError, render_prompt
+
+
+@pytest.fixture
+def instant_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop tenacity's 5-60s backoff so retry behaviour itself stays testable.
+
+    The other tests bypass the decorator via `__wrapped__` to stay fast; tests that
+    assert on retrying must go *through* it, and would otherwise sleep 15s.
+    """
+    monkeypatch.setattr(AgentClient.ask.retry, "wait", wait_none())
 
 
 def test_render_prompt_substitutes_variables(fixtures_dir: Path) -> None:
@@ -36,12 +47,65 @@ async def test_ask_raises_on_invalid_json(fixtures_dir: Path) -> None:
     with patch("newsroom.agent_client.query") as mock_query:
         mock_query.return_value = _mock_stream("not-json-at-all")
         with pytest.raises(ParseError):
+            # Call __wrapped__ to bypass tenacity retries (avoids 5-60s backoff delays)
+            await client.ask.__wrapped__(
+                client,
+                prompt_name="prompt_test_echo",
+                variables={"value": "x"},
+                model="claude-haiku-4-5",
+                parse="json",
+            )
+
+
+async def test_ask_retries_on_invalid_json(fixtures_dir: Path, instant_retry: None) -> None:
+    """A malformed response is retryable: the model is non-deterministic, so ask again."""
+    client = AgentClient(prompts_dir=fixtures_dir)
+    with patch("newsroom.agent_client.query") as mock_query:
+        mock_query.side_effect = lambda **_: _mock_stream("not-json-at-all")
+        with pytest.raises(ParseError):
             await client.ask(
                 prompt_name="prompt_test_echo",
                 variables={"value": "x"},
                 model="claude-haiku-4-5",
                 parse="json",
             )
+    assert mock_query.call_count == 3
+
+
+async def test_ask_recovers_when_retry_returns_valid_json(
+    fixtures_dir: Path, instant_retry: None
+) -> None:
+    """One malformed response must not force a degraded digest — the retry saves it."""
+    responses = iter(["not-json-at-all", '{"echoed": "hi"}'])
+    client = AgentClient(prompts_dir=fixtures_dir)
+    with patch("newsroom.agent_client.query") as mock_query:
+        mock_query.side_effect = lambda **_: _mock_stream(next(responses))
+        result = await client.ask(
+            prompt_name="prompt_test_echo",
+            variables={"value": "x"},
+            model="claude-haiku-4-5",
+            parse="json",
+        )
+    assert result == {"echoed": "hi"}
+    assert mock_query.call_count == 2
+
+
+async def test_parse_error_carries_full_raw_response(fixtures_dir: Path) -> None:
+    """The log truncates at 200 chars; the exception must carry the whole response."""
+    broken = '{"items": [{"id": 1, "headline": "Er nannte es "Zäsur" fuer die CDU"}]}' + "x" * 500
+    client = AgentClient(prompts_dir=fixtures_dir)
+    with patch("newsroom.agent_client.query") as mock_query:
+        mock_query.return_value = _mock_stream(broken)
+        with pytest.raises(ParseError) as exc_info:
+            # Call __wrapped__ to bypass tenacity retries (avoids 5-60s backoff delays)
+            await client.ask.__wrapped__(
+                client,
+                prompt_name="prompt_test_echo",
+                variables={"value": "x"},
+                model="claude-haiku-4-5",
+                parse="json",
+            )
+    assert exc_info.value.raw_response == broken
 
 
 async def test_ask_returns_raw_text_when_parse_none(fixtures_dir: Path) -> None:
