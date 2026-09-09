@@ -24,6 +24,17 @@ from newsroom.notifier import Notifier
 from newsroom.state import State
 
 
+@pytest.fixture(autouse=True)
+def _isolate_parse_failure_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep parse-failure dumps out of the real ~/Library/Logs/newsroom/.
+
+    PARSE_FAILURE_DIR is a module constant, so tmp_path does not cover it on its own.
+    A test that forgets to patch it writes into the user's actual log directory
+    without ever turning red — autouse closes that off for every test in this file.
+    """
+    monkeypatch.setattr("newsroom.digester.PARSE_FAILURE_DIR", tmp_path / "parse-failures")
+
+
 @pytest.fixture
 def populated_state(tmp_path: Path) -> State:
     state = State(tmp_path / "t.db")
@@ -346,6 +357,8 @@ async def test_generate_digest_banner_names_unparseable_response(
     assert "Automatisch generiert" in body
     assert "nicht verwertbar" in body
     assert "nicht erreichbar" not in body
+    # No raw response on the error → nothing to dump, so no stray file either.
+    assert not (tmp_path / "parse-failures").exists()
 
 
 @freeze_time("2026-04-19 22:30:00")

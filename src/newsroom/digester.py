@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import UTC, datetime, timedelta
 from datetime import date as _date
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -34,9 +34,9 @@ SLOT_LABEL_DE = {"morning": "Morgen", "evening": "Abend"}
 # `.capitalize()` at the call site (Phase-2b/3 readiness: `dresden` → "Dresden").
 CATEGORY_LABEL = {"world": "Weltgeschehen", "ai": "AI/LLM/ML"}
 
-# Degraded-render banners. The two causes stay distinguishable on purpose: for a year
-# every degraded digest claimed an outage, while the logs showed Opus had answered and
-# only the JSON was malformed — the banner sent every diagnosis down the wrong path.
+# Degraded-render banners. The two causes stay distinguishable on purpose: a malformed
+# response is not an outage, and reporting it as one sends every later diagnosis down
+# the wrong path — which is exactly what the single old banner did.
 BANNER_UNREACHABLE = (
     "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus war nicht erreichbar)"
 )
@@ -44,7 +44,7 @@ BANNER_UNPARSEABLE = (
     "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus-Antwort war nicht verwertbar)"
 )
 
-# Unparseable responses are dumped here in full; the log message truncates at 200 chars.
+# Unparseable responses are dumped here in full; the log message only carries a prefix.
 PARSE_FAILURE_DIR = LOG_DIR / "parse-failures"
 
 
@@ -231,7 +231,9 @@ def _dump_parse_failure(raw: str, *, slot: str, date: _date) -> Path | None:
         return None
     try:
         PARSE_FAILURE_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(BERLIN_TZ).strftime("%H%M%S")
+        # UTC, matching the log timestamps that point at this file. The
+        # "never UTC" invariant covers user-facing time; a dump is log infrastructure.
+        stamp = datetime.now(UTC).strftime("%H%M%S")
         path = PARSE_FAILURE_DIR / f"{date.isoformat()}-{slot}-{stamp}.txt"
         # errors="replace": a malformed response is exactly where a lone surrogate
         # turns up, and an unwritable character must not cost the digest.
