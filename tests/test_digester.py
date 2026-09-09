@@ -396,9 +396,10 @@ async def test_generate_digest_survives_unwritable_dump(
 ) -> None:
     """A lone surrogate in the response must not cost the digest.
 
-    Guards the `errors="replace"` half of the fix: without it `write_text` raises
-    UnicodeEncodeError here. The widened `except` is guarded by the test below —
-    this one cannot see it, because replace keeps the raise from happening at all.
+    Guards the `errors="replace"` half of the fix — but only via the dump assertion
+    at the end: the digest survives either way now, because the widened `except`
+    would swallow the UnicodeEncodeError. What replace buys is the dump itself.
+    The widened `except` is guarded by the test below, not by this one.
     """
     error = ParseError("invalid JSON in response")
     error.raw_response = "Antwort mit einem einsamen Surrogat \ud800 darin"
@@ -416,6 +417,11 @@ async def test_generate_digest_survives_unwritable_dump(
     assert "nicht verwertbar" in body
     assert written, "slot must be finalised, not left claimed"
     assert populated_state.get_digest("2026-04-19", "morning")["item_count"] == 3
+    # Without errors="replace" the widened except would swallow the raise and the
+    # digest would survive anyway — losing the dump silently. Assert it was written.
+    dumps = list((tmp_path / "parse-failures").glob("*.txt"))
+    assert dumps, "the surrogate must be replaced, not cost the dump"
+    assert "Surrogat" in dumps[0].read_text()
 
 
 @freeze_time("2026-04-19 22:30:00")

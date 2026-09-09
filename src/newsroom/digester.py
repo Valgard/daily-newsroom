@@ -228,6 +228,10 @@ def _dump_parse_failure(raw: str, *, slot: str, date: _date) -> Path | None:
     or the write failed. Callers run inside an exception handler after the digest
     slot is claimed, so anything escaping here would leave that slot claimed but
     unfinalised, and every later run would skip it.
+
+    One seam in that promise: the warning below formats its argument, and
+    RichHandler formats outside its own try/except. Log the exception and nothing
+    richer — an object with a raising __str__ would escape after all.
     """
     if not raw:
         return None
