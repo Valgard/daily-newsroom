@@ -24,17 +24,6 @@ from newsroom.notifier import Notifier
 from newsroom.state import State
 
 
-@pytest.fixture(autouse=True)
-def _isolate_parse_failure_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep parse-failure dumps out of the real ~/Library/Logs/newsroom/.
-
-    PARSE_FAILURE_DIR is a module constant, so tmp_path does not cover it on its own.
-    A test that forgets to patch it writes into the user's actual log directory
-    without ever turning red — autouse closes that off for every test in this file.
-    """
-    monkeypatch.setattr("newsroom.digester.PARSE_FAILURE_DIR", tmp_path / "parse-failures")
-
-
 @pytest.fixture
 def populated_state(tmp_path: Path) -> State:
     state = State(tmp_path / "t.db")
@@ -405,11 +394,11 @@ async def test_generate_digest_dumps_raw_response_on_parse_error(
 async def test_generate_digest_survives_unwritable_dump(
     populated_state: State, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The dump is diagnostics, the digest is the product.
+    """A lone surrogate in the response must not cost the digest.
 
-    A lone surrogate in the response makes `write_text` raise UnicodeEncodeError —
-    a ValueError, not an OSError. If that escapes, it takes generate_digest with it,
-    and the slot stays claimed-but-unfinalised: every later run skips it silently.
+    Guards the `errors="replace"` half of the fix: without it `write_text` raises
+    UnicodeEncodeError here. The widened `except` is guarded by the test below —
+    this one cannot see it, because replace keeps the raise from happening at all.
     """
     error = ParseError("invalid JSON in response")
     error.raw_response = "Antwort mit einem einsamen Surrogat \ud800 darin"
@@ -427,6 +416,39 @@ async def test_generate_digest_survives_unwritable_dump(
     assert "nicht verwertbar" in body
     assert written, "slot must be finalised, not left claimed"
     assert populated_state.get_digest("2026-04-19", "morning")["item_count"] == 3
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_survives_non_oserror_from_dump(
+    populated_state: State, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guards the widened `except` in _dump_parse_failure, which no other test sees.
+
+    Narrowing it back to OSError leaves every other test green, because
+    `errors="replace"` stops the realistic raise from ever reaching the handler.
+    So this test raises something that is deliberately not an OSError.
+    """
+
+    class _ExplodingDir:
+        def mkdir(self, **_: object) -> None:
+            raise RuntimeError("deliberately not an OSError")
+
+    error = ParseError("invalid JSON in response")
+    error.raw_response = "eine Antwort, die gedumpt werden wollte"
+    mock_agent = AsyncMock()
+    mock_agent.ask.side_effect = error
+    monkeypatch.setattr("newsroom.digester.PARSE_FAILURE_DIR", _ExplodingDir())
+    written = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    assert written, "a failing dump must not cost the digest"
+    assert populated_state.get_digest("2026-04-19", "morning")["item_count"] == 3
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert "nicht verwertbar" in body
 
 
 @freeze_time("2026-04-19 22:30:00")
