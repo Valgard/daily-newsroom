@@ -1414,10 +1414,19 @@ def test_render_digest_truncates_degraded_prose_after_stripping_html() -> None:
     bite: exactly 240 words of "Wort " fit into ITEM_BODY_MAX_CHARS. Truncating
     before stripping yields 16; dropping the cap yields 400.
     """
-    unit = '<a href="https://example.com/very/long/path/that/is/quite/long">Wort</a> '
+    word = "Wort "
+    # The exact count below only holds while the cap falls on a word boundary. Raise
+    # ITEM_BODY_MAX_CHARS to, say, 1204 and the real count is 241 while the formula
+    # still says 240 — a correct change would look like a bug. Fail on the
+    # assumption instead, so the message names the fixture rather than the code.
+    assert ITEM_BODY_MAX_CHARS % len(word) == 0, (
+        f"fixture assumes ITEM_BODY_MAX_CHARS ({ITEM_BODY_MAX_CHARS}) is a multiple "
+        f"of len({word!r}); pick a filler word that divides it"
+    )
+    unit = f'<a href="https://example.com/very/long/path/that/is/quite/long">{word.strip()}</a> '
     items = [_item_row(id=1, source_category="ai", title="A1", raw_summary=unit * 400)]
     out = _render_ai(items, {})
-    assert out.count("Wort") == ITEM_BODY_MAX_CHARS // len("Wort ")
+    assert out.count(word.strip()) == ITEM_BODY_MAX_CHARS // len(word)
 
 
 def test_render_digest_flattens_newlines_in_degraded_prose() -> None:
