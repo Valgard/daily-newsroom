@@ -840,6 +840,67 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
 
 
 @freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_banners_only_the_category_without_content(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """Degradation is classified per file, because each category gets its own file.
+
+    Opus answers for the single world item and for none of the three ai items. Globally
+    that is a partial miss, but the ai file is completely without LLM content while the
+    world file is healthy. A global verdict would mislabel one of the two files.
+    """
+    populated_state.upsert_source(
+        Source(
+            name="tagesschau",
+            category="world",
+            subcategory="news",
+            url="https://www.tagesschau.de/index~rss2.xml",
+            feed_type="rss",
+            interval_seconds=3600,
+            enabled=True,
+        )
+    )
+    world_src = populated_state.get_source_by_name("tagesschau")["id"]
+    populated_state.insert_item(
+        source_id=world_src,
+        item_hash="w0",
+        url="https://t.de/0",
+        title="Welt-Titel",
+        author=None,
+        published_at="2026-04-19T02:00:00Z",
+        raw_summary="welt summary",
+        category="world",
+    )
+    wid = populated_state.list_items_by_status("new", limit=1)[0]["id"]
+    populated_state.mark_item_scored(item_id=wid, importance=4, reason="rw", model="haiku")
+
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {
+        "items": [{"id": wid, "headline": "Welt-Headline", "prose": "Welt-Prosa."}]
+    }
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+
+    month = tmp_path / "news" / "2026" / "04"
+    ai_body = (month / "2026-04-19_ai.md").read_text()
+    world_body = (month / "2026-04-19_world.md").read_text()
+
+    assert "keine Item-Inhalte" in ai_body
+    # Assert on the marker's own form: every banner also contains the phrase "ohne
+    # LLM-Zusammenfassung" in its parenthetical, so the bare phrase proves nothing.
+    assert "⚠️ ohne LLM-Zusammenfassung" not in ai_body, "the banner already says it"
+
+    assert "Automatisch generiert" not in world_body
+    assert "⚠️ ohne LLM-Zusammenfassung" not in world_body
+    assert "Welt-Headline" in world_body
+
+
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_splits_categories_into_two_files(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -1049,6 +1110,87 @@ def test_render_digest_banner_after_header() -> None:
     assert out.startswith(
         "# News-Digest 19. April 2026 — AI/LLM/ML (Morgen)\n\n⚠️ Test-Banner\n\n## A1"
     )
+
+
+def _render_ai(items, contents, *, banner=None):  # noqa: ANN001, ANN202
+    """Render one ai-category digest body — shared setup for the marker tests."""
+    return _render_digest(
+        items,
+        contents,
+        dict.fromkeys([i["id"] for i in items]),
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        now=datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin")),
+        category="ai",
+        banner=banner,
+    )
+
+
+def test_render_digest_marks_only_the_degraded_item() -> None:
+    """A partial miss is per item, so the marker is too — a banner would overstate it."""
+    items = [
+        _item_row(id=1, source_category="ai", title="A1"),
+        _item_row(id=2, source_category="ai", title="A2", raw_summary="roher Feed-Text"),
+    ]
+    out = _render_ai(items, {1: {"headline": "Echte Headline", "prose": "Echte Prosa."}})
+    healthy, degraded = out.split("## A2")
+    assert "⚠️ ohne LLM-Zusammenfassung" not in healthy
+    assert "⚠️ ohne LLM-Zusammenfassung" in degraded
+    # The marker rides inside the italic meta line, next to source/time/importance.
+    assert "· Importance 3 · ⚠️ ohne LLM-Zusammenfassung*" in degraded
+
+
+def test_render_digest_omits_markers_when_banner_present() -> None:
+    """Banner and marker are mutually exclusive: 125 markers under a banner saying the
+    same thing is exactly what the banner exists to avoid."""
+    items = [
+        _item_row(id=1, source_category="ai", title="A1"),
+        _item_row(id=2, source_category="ai", title="A2"),
+    ]
+    out = _render_ai(items, {}, banner="⚠️ Test-Banner")
+    assert "⚠️ Test-Banner" in out
+    assert "⚠️ ohne LLM-Zusammenfassung" not in out
+
+
+def test_render_digest_strips_html_from_degraded_prose() -> None:
+    """The degraded prose comes straight from the feed, which is full of markup."""
+    raw = '<p><strong><a href="https://x.test/y">Titel</a></strong></p>Text mit &amp; und &#8217;'
+    items = [_item_row(id=1, source_category="ai", title="A1", raw_summary=raw)]
+    out = _render_ai(items, {})
+    assert "Titel Text mit & und ’" in out
+    assert "<p>" not in out and "href" not in out
+    assert "TitelText" not in out, "tags must become spaces, not vanish and glue words"
+
+
+def test_render_digest_keeps_deliberately_escaped_markup_as_text() -> None:
+    """Stripping must precede unescaping, or escaped text is mistaken for markup.
+
+    An author writing about HTML escapes it: `&lt;p&gt;` is content, not a tag.
+    Unescaping first turns it into a real tag, which the stripper then deletes.
+    """
+    items = [
+        _item_row(
+            id=1,
+            source_category="ai",
+            title="A1",
+            raw_summary="Der Feed liefert &lt;p&gt; als sichtbaren Text",
+        )
+    ]
+    out = _render_ai(items, {})
+    assert "Der Feed liefert <p> als sichtbaren Text" in out
+
+
+def test_render_digest_truncates_degraded_prose_after_stripping_html() -> None:
+    """Truncating before stripping spends the 1200-char budget on markup.
+
+    Measured over 400 real items: 41% of raw_summary is markup, so a naive
+    truncation delivers roughly half a window of actual text.
+    """
+    unit = '<a href="https://example.com/very/long/path/that/is/quite/long">Wort</a> '
+    items = [_item_row(id=1, source_category="ai", title="A1", raw_summary=unit * 200)]
+    out = _render_ai(items, {})
+    # Naive raw[:1200] fits ~16 words; stripping first fits ~240.
+    assert out.count("Wort") > 100, "the budget must be spent on text, not on markup"
 
 
 def test_evening_header_re_matches_new_h1_with_category() -> None:
