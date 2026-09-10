@@ -93,12 +93,28 @@ schema change.
   failed), `BANNER_UNPARSEABLE` (answer arrived, would not parse),
   `BANNER_NO_CONTENT` (answer parsed, held no item content).
 
-  `_plain_text` strips tags *before* unescaping, so `&lt;p&gt;` that an author
-  escaped on purpose survives as text instead of being read as a tag and dropped.
-  It is not a sanitiser — nothing here is rendered in a browser. The prompt body
-  in `format_items_for_prompt` is deliberately **not** stripped; markup is ~41% of
-  a `raw_summary` at the median, so doing it there would change what the model
-  sees on every healthy run and belongs in its own change.
+  **`contents_by_id` holds only what is renderable, not everything that arrived.**
+  `_usable_contents` drops entries without a numeric id, without a non-blank
+  headline, or without any body text (`prose` or `quote`). Membership decides
+  "healthy", so present-but-unusable would render an empty `##`, discard the DB
+  fallback, and — with `headline` missing entirely — raise `KeyError` in
+  `_render_item` *after* the slot is claimed, losing it until someone runs
+  `--force`. Never widen this back to a plain `"id" in c` test.
+
+  `_plain_text` does three things, each load-bearing:
+  - Strips tags **before** unescaping, so `&lt;p&gt;` that an author escaped on
+    purpose survives as text instead of being read as a tag and dropped.
+  - Requires a letter, `/`, `!` or `?` after the `<` (`_HTML_TAG_RE`), so prose
+    like "gilt wenn a < b" keeps its text instead of losing everything up to the
+    next `>`.
+  - Escapes a leading markdown sigil (`#`, `>`, `-`, `+`, `*`, `|`, `1.`). Tags
+    used to shield first position; stripping them exposes it, and a paragraph
+    starting "# 1 Grund" would open a heading mid-file.
+
+  It is not a sanitiser — nothing here is rendered in a browser. The prompt body in
+  `format_items_for_prompt` is deliberately **not** stripped; markup is ~41% of a
+  `raw_summary` at the median, so doing it there would change what the model sees
+  on every healthy run and belongs in its own change.
 
 ## Known Architecture Deferrals
 

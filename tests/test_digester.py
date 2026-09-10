@@ -16,6 +16,7 @@ from newsroom.digester import (
     _relative_time,
     _render_digest,
     _render_item,
+    _usable_contents,
     determine_slot,
     format_items_for_prompt,
     generate_digest,
@@ -840,6 +841,35 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
 
 
 @freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_survives_llm_items_without_headline(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """An unrenderable entry must not cost the slot.
+
+    `_render_item` reads content['headline'] directly, so a missing key raised
+    KeyError after claim_digest_slot had already written the row: never finalised,
+    every later run skipping it, and no way back without --force.
+    """
+    ids = [r["id"] for r in populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")]
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {"items": [{"id": i, "prose": "ohne headline"} for i in ids]}
+
+    written = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+
+    assert written, "slot must be finalised, not left claimed"
+    assert populated_state.get_digest("2026-04-19", "morning")["item_count"] == 3  # noqa: PLR2004
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert "keine Item-Inhalte" in body, "nothing was renderable, so the file says so"
+    assert "## Title 0" in body, "the DB fallback must still carry the item"
+
+
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_banners_only_the_category_without_content(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -1160,6 +1190,76 @@ def test_render_digest_strips_html_from_degraded_prose() -> None:
     assert "Titel Text mit & und ’" in out
     assert "<p>" not in out and "href" not in out
     assert "TitelText" not in out, "tags must become spaces, not vanish and glue words"
+
+
+@pytest.mark.parametrize(
+    ("entry", "reason"),
+    [
+        ({"id": 1, "headline": "", "prose": "p"}, "empty headline renders an empty H2"),
+        ({"id": 1, "headline": "   ", "prose": "p"}, "whitespace headline is no headline"),
+        ({"id": 1, "prose": "p"}, "missing headline raised KeyError mid-render"),
+        ({"id": 1, "headline": "h"}, "headline with no body text is no summary"),
+        ({"id": 1, "headline": "h", "prose": "", "quote": ""}, "empty body is no summary"),
+        ({"headline": "h", "prose": "p"}, "no id cannot be keyed back to a row"),
+        ({"id": "nicht-numerisch", "headline": "h", "prose": "p"}, "id must be an int"),
+        ({"id": None, "headline": "h", "prose": "p"}, "None id is not an int"),
+    ],
+)
+def test_usable_contents_rejects_unrenderable_entries(entry: dict, reason: str) -> None:
+    """Membership in contents_by_id decides 'healthy', so it must mean renderable.
+
+    An entry that is present but unusable renders an empty headline and silently
+    discards the DB fallback — the exact failure this branch exists to surface.
+    """
+    assert _usable_contents([entry]) == {}, reason
+
+
+def test_usable_contents_keeps_renderable_entries() -> None:
+    """A quote counts as body text: no reason to discard a real headline over it."""
+    full = {"id": 1, "headline": "H", "prose": "P"}
+    quote_only = {"id": "2", "headline": "H2", "quote": '"Z"'}
+    assert _usable_contents([full, quote_only]) == {1: full, 2: quote_only}
+
+
+def test_usable_contents_tolerates_a_non_list_items_value() -> None:
+    """Runs after the JSON parse, so the shape below 'items' is still unvalidated."""
+    assert _usable_contents("nicht-iterierbar-als-dicts") == {}
+    assert _usable_contents([None, 42, "text"]) == {}
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("<p># 1 Grund: Warum</p>", r"\# 1 Grund: Warum"),
+        ("<p>> Zitat aus dem Feed</p>", r"\> Zitat aus dem Feed"),
+        ("<p>- Erster Punkt</p>", r"\- Erster Punkt"),
+        ("<p>* Sternchen</p>", r"\* Sternchen"),
+        ("<p>| Tabelle |</p>", r"\| Tabelle |"),
+        ("<p>1. Erstens</p>", r"1\. Erstens"),
+        ("<p>Normaler Text</p>", "Normaler Text"),
+    ],
+)
+def test_render_digest_escapes_leading_markdown_sigil(raw: str, expected: str) -> None:
+    """Stripping tags exposes the first text character, which may be a markdown sigil.
+
+    Before stripping, a leading `<` made this inert. Now `<p># Grund</p>` would open
+    an H1 in the middle of the file, breaking the "Python renders all structure" rule.
+    """
+    items = [_item_row(id=1, source_category="ai", title="A1", raw_summary=raw)]
+    assert expected in _render_ai(items, {})
+
+
+def test_render_digest_keeps_comparison_operators_in_prose() -> None:
+    """A bare `<` is not a tag. Treating it as one deletes real text without a trace."""
+    items = [
+        _item_row(
+            id=1,
+            source_category="ai",
+            title="A1",
+            raw_summary="<p>Gilt nur wenn a < b und c > d ist.</p>",
+        )
+    ]
+    assert "Gilt nur wenn a < b und c > d ist." in _render_ai(items, {})
 
 
 def test_render_digest_keeps_deliberately_escaped_markup_as_text() -> None:

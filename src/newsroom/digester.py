@@ -151,7 +151,39 @@ def _resolve_cross_link(item_url: str, summaries_dir: Path) -> Path | None:
 
 
 ITEM_BODY_MAX_CHARS = 1200
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
+# Requires a letter, slash, `!` or `?` after the `<`, so a bare comparison operator
+# ("gilt wenn a < b") stays text instead of being eaten as far as the next `>`.
+_HTML_TAG_RE = re.compile(r"<[a-zA-Z/!?][^>]*>")
+# A markdown sigil in first position, exposed once the tags around it are gone.
+_LEADING_SIGIL_RE = re.compile(r"^(?:([#>|+*-])|(\d+)([.)]))")
+
+
+def _usable_contents(raw_items) -> dict[int, dict]:  # noqa: ANN001
+    """Index LLM item content by DB id, keeping only entries that can be rendered.
+
+    Membership in this dict is what marks an item healthy, so it has to mean
+    *renderable*, not merely *present*. An entry with a blank or missing headline
+    would render an empty H2 and throw the DB fallback away — the silent
+    degradation this module exists to surface — or raise KeyError mid-render, after
+    the digest slot is already claimed and therefore lost until someone runs --force.
+
+    A quote counts as body text; there is no reason to discard a real headline just
+    because the model put its text in the other field.
+    """
+    usable: dict[int, dict] = {}
+    for content in raw_items:
+        if not isinstance(content, dict):
+            continue
+        try:
+            item_id = int(content["id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not str(content.get("headline") or "").strip():
+            continue
+        if not (str(content.get("prose") or "") + str(content.get("quote") or "")).strip():
+            continue
+        usable[item_id] = content
+    return usable
 
 
 def _plain_text(raw: str) -> str:
@@ -162,7 +194,14 @@ def _plain_text(raw: str) -> str:
     dropped. Tags become spaces rather than vanishing, or ``<p>A</p><p>B</p>``
     would read as ``AB``.
     """
-    return " ".join(html.unescape(_HTML_TAG_RE.sub(" ", raw)).split())
+    text = " ".join(html.unescape(_HTML_TAG_RE.sub(" ", raw)).split())
+    # Escape a leading sigil: the code owns every bit of markdown structure, and a
+    # feed paragraph starting "# 1 Grund" would otherwise open a heading mid-file.
+    return _LEADING_SIGIL_RE.sub(
+        lambda m: f"\\{m.group(1)}" if m.group(1) else f"{m.group(2)}\\{m.group(3)}",
+        text,
+        count=1,
+    )
 
 
 def _content_for(item, contents_by_id: dict[int, dict]) -> dict:  # noqa: ANN001
@@ -361,7 +400,7 @@ async def generate_digest(  # noqa: PLR0912, PLR0915
             model=DIGEST_MODEL,
             parse="json",
         )
-        contents_by_id = {int(c["id"]): c for c in result.get("items", []) if "id" in c}
+        contents_by_id = _usable_contents(result.get("items", []))
     except ParseError as e:
         logger.warning("Opus response unparseable after retries, using degraded render: %s", e)
         dump_path = _dump_parse_failure(e.raw_response, slot=slot, date=date)
