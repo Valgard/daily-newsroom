@@ -135,3 +135,24 @@ fires one notification per non-empty category. `digests.file_path` became a JSON
 array (one row per `(date, slot)`, no schema migration). The decision was judged a
 refinement of this ADR rather than a standalone ADR. Design record (kept in-tree):
 `docs/specs/2026-06-22-category-split-digest-files-design.md`.
+
+### Later refinement (2026-09-10): degradation is visible, and fallback prose is plain text
+
+The graceful degradation above was silent: an item that fell back to its DB row
+looked exactly like a summarised one, so a digest could read as healthy while
+carrying raw feed text. It now announces itself — a per-item marker in the meta
+line when only some items are missing content, or a per-file banner
+(`BANNER_NO_CONTENT`) when none of a file's items have any. The verdict is
+computed per category, since each category is its own file.
+
+Two changes protect this ADR's decision rather than alter it. Membership in the
+`contents_by_id` lookup now means *renderable* (`_usable_contents`), not merely
+*present*: an entry with a blank, missing or non-string headline used to render an
+empty `##` or raise mid-render, which is precisely the deterministic structure this
+ADR puts in Python's hands. And the fallback prose is stripped of feed markup
+before truncation, with a leading markdown sigil escaped — without that escape, a
+feed paragraph beginning `# 1 Grund` would open a heading inside the file, letting
+the feed forge structure that only `_render_digest` is allowed to emit.
+
+The stripping stays out of `format_items_for_prompt`: changing what the model sees
+on every healthy run is a different decision and wants its own observation.
