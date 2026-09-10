@@ -72,11 +72,33 @@ schema change.
 - **The `---` morning/evening separator is owned by `_write_digest_file`** — not
   the renderer or the prompt. `_render_digest` must never emit `---`; adding one
   in the prompt or renderer creates a double-separator bug.
-- **Missing/unknown LLM item ids degrade gracefully.** An item absent from the
-  JSON response renders from the DB row (`headline` = `title`, `prose` =
-  `raw_summary[:1200]`) so no item is ever dropped; a `logger.warning` fires on
-  partial id mismatch. A full LLM outage renders every item degraded under a
-  "⚠️ Automatisch generiert" banner.
+- **Missing/unknown LLM item ids degrade gracefully — and say so.** An item absent
+  from the JSON response renders from the DB row (`headline` = `title`, `prose` =
+  markup-stripped `raw_summary`, truncated to 1200 chars *after* stripping), so no
+  item is ever dropped. Degradation is always visible to the reader, in one of two
+  forms, and the two are mutually exclusive per file:
+  - **Some items missing** → each affected item carries `⚠️ ohne
+    LLM-Zusammenfassung` in its meta line. No banner: it would claim the whole
+    file is degraded.
+  - **No content for any item in the file** → `BANNER_NO_CONTENT` at the top, and
+    no per-item markers.
+
+  **The verdict is per category, not per run.** Each category is its own file, so a
+  run that is globally partial can hold one healthy file and one entirely without
+  content. Compute it over `cat_items` inside the category loop — never over
+  `items`.
+
+  Three distinct banners, three distinct causes — keep them apart, a wrong one
+  sends every later diagnosis down the wrong path: `BANNER_UNREACHABLE` (the call
+  failed), `BANNER_UNPARSEABLE` (answer arrived, would not parse),
+  `BANNER_NO_CONTENT` (answer parsed, held no item content).
+
+  `_plain_text` strips tags *before* unescaping, so `&lt;p&gt;` that an author
+  escaped on purpose survives as text instead of being read as a tag and dropped.
+  It is not a sanitiser — nothing here is rendered in a browser. The prompt body
+  in `format_items_for_prompt` is deliberately **not** stripped; markup is ~41% of
+  a `raw_summary` at the median, so doing it there would change what the model
+  sees on every healthy run and belongs in its own change.
 
 ## Known Architecture Deferrals
 
