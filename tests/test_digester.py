@@ -843,6 +843,32 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
 
 
 @freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_emits_digest_category_no_content_event(
+    populated_state: State, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The banner is reader-facing; this event is what makes it greppable later.
+
+    Without it, "why did 2026-07-09 carry no summaries" is answerable only by
+    reading code, which is the same gap the notify-dispatch event was added to close.
+    """
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {"items": []}
+    with caplog.at_level(logging.INFO, logger="newsroom.digester"):
+        await generate_digest(
+            state=populated_state,
+            slot="morning",
+            date=datetime(2026, 4, 19).date(),
+            output_root=tmp_path / "news",
+            agent=mock_agent,
+        )
+    events = [
+        r for r in caplog.records if getattr(r, "event", None) == "digest_category_no_content"
+    ]
+    assert len(events) == 1
+    assert events[0].category == "ai"
+
+
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_marks_but_does_not_banner_a_partial_category(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -869,6 +895,30 @@ async def test_generate_digest_marks_but_does_not_banner_a_partial_category(
     assert "Automatisch generiert" not in body, "one served item is not a total loss"
     assert "Echte Headline" in body
     assert body.count("⚠️ ohne LLM-Zusammenfassung") == len(unserved)
+
+
+@freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_banners_a_null_items_value(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """`{"items": null}` is an arrived, parsed response — not an outage.
+
+    `result.get("items", [])` hands back None for an explicit null, which used to
+    raise TypeError inside the broad handler and blame the connection.
+    """
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {"items": None}
+    written = await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    assert written
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert BANNER_NO_CONTENT in body
+    assert "nicht erreichbar" not in body, "the response arrived; do not blame the network"
 
 
 @freeze_time("2026-04-19 22:30:00")
@@ -1207,6 +1257,27 @@ def test_render_digest_marks_only_the_degraded_item() -> None:
     assert "· Importance 3 · ⚠️ ohne LLM-Zusammenfassung*" in degraded
 
 
+def test_render_item_orders_marker_inside_italics_before_cross_link(tmp_path: Path) -> None:
+    """The marker belongs to the italic meta run; the cross-link sits outside it.
+
+    Both are appended to the same line, so their order is easy to get wrong and
+    nothing else in the suite renders them together.
+    """
+    now = datetime(2026, 4, 19, 22, 30, tzinfo=ZoneInfo("Europe/Berlin"))
+    link = tmp_path / "deep.md"
+    out = _render_item(
+        _item_row(),
+        {"headline": "H", "prose": "P"},
+        link,
+        now,
+        mark_degraded=True,
+    )
+    assert out.endswith(
+        f"[Weiterlesen →](https://e.x/a) · *zeit-politik · heute 04:00 · "
+        f"Importance 3 · ⚠️ ohne LLM-Zusammenfassung* · 📄 [Tief-Zusammenfassung]({link})"
+    )
+
+
 def test_render_digest_omits_markers_when_banner_present() -> None:
     """Banner and marker are mutually exclusive: a marker on every item, under a banner
     already saying so, is exactly what the banner exists to avoid."""
@@ -1240,6 +1311,16 @@ def test_render_digest_strips_html_from_degraded_prose() -> None:
         ({"headline": "h", "prose": "p"}, "no id cannot be keyed back to a row"),
         ({"id": "nicht-numerisch", "headline": "h", "prose": "p"}, "id must be an int"),
         ({"id": None, "headline": "h", "prose": "p"}, "None id is not an int"),
+        # int() accepts these and silently keys them to row 1 — content on the wrong
+        # article, with a real headline and a real link, is worse than a marker.
+        ({"id": True, "headline": "h", "prose": "p"}, "int(True) is 1, but True is no id"),
+        ({"id": 1.9, "headline": "h", "prose": "p"}, "int(1.9) is 1, so 1.9 is not row 1"),
+        # The check must touch what _render_item touches: it calls .strip() on the raw
+        # value, so str()-ing it here only hides the AttributeError until render time.
+        ({"id": 1, "headline": "h", "prose": ["a", "b"]}, "list prose has no .strip()"),
+        ({"id": 1, "headline": "h", "prose": 42}, "int prose has no .strip()"),
+        ({"id": 1, "headline": "h", "prose": "p", "quote": {"x": 1}}, "dict quote likewise"),
+        ({"id": 1, "headline": ["h"], "prose": "p"}, "a list headline renders as ['h']"),
     ],
 )
 def test_usable_contents_rejects_unrenderable_entries(entry: dict, reason: str) -> None:
@@ -1258,10 +1339,14 @@ def test_usable_contents_keeps_renderable_entries() -> None:
     assert _usable_contents([full, quote_only]) == {1: full, 2: quote_only}
 
 
-def test_usable_contents_tolerates_a_non_list_items_value() -> None:
-    """Runs after the JSON parse, so the shape below 'items' is still unvalidated."""
-    assert _usable_contents("nicht-iterierbar-als-dicts") == {}
-    assert _usable_contents([None, 42, "text"]) == {}
+@pytest.mark.parametrize("items", [None, 42, "text", {"a": 1}, [None, 42, "text"]])
+def test_usable_contents_tolerates_a_non_list_items_value(items: object) -> None:
+    """Runs after the JSON parse, so the shape below 'items' is still unvalidated.
+
+    `{"items": null}` is the likely one, and it used to raise TypeError inside the
+    broad handler — reporting an outage for a response that had arrived just fine.
+    """
+    assert _usable_contents(items) == {}
 
 
 @pytest.mark.parametrize(
@@ -1270,9 +1355,14 @@ def test_usable_contents_tolerates_a_non_list_items_value() -> None:
         ("<p># 1 Grund: Warum</p>", r"\# 1 Grund: Warum"),
         ("<p>> Zitat aus dem Feed</p>", r"\> Zitat aus dem Feed"),
         ("<p>- Erster Punkt</p>", r"\- Erster Punkt"),
+        ("<p>+ Pluspunkt</p>", r"\+ Pluspunkt"),
         ("<p>* Sternchen</p>", r"\* Sternchen"),
         ("<p>| Tabelle |</p>", r"\| Tabelle |"),
         ("<p>1. Erstens</p>", r"1\. Erstens"),
+        ("<p>1) Erstens</p>", r"1\) Erstens"),
+        # A flattened tilde fence never closes, so it swallows every item after it.
+        ("<p>~~~\ncode\n~~~</p>", r"\~~~ code ~~~"),
+        ("<p>```\ncode\n```</p>", "\\``` code ```"),
         ("<p>Normaler Text</p>", "Normaler Text"),
     ],
 )

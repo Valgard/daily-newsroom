@@ -107,15 +107,19 @@ schema change.
   - Requires a letter, `/`, `!` or `?` after the `<` (`_HTML_TAG_RE`), so prose
     like "gilt wenn a < b" keeps its text instead of losing everything up to the
     next `>`.
-  - Escapes a leading markdown sigil (`#`, `>`, `-`, `+`, `*`, `|`, `1.`). Tags
-    used to shield first position; stripping them exposes it, and a paragraph
-    starting "# 1 Grund" would open a heading mid-file.
+  - Escapes a leading markdown sigil (`#`, `>`, `-`, `+`, `*`, `|`, `~`, backtick,
+    `1.`). Tags used to shield first position; stripping them exposes it, and a
+    paragraph starting "# 1 Grund" would open a heading mid-file. `~` matters most:
+    a flattened `~~~ code ~~~` is a tilde fence whose info string may contain
+    tildes, so it never closes and swallows **every following item**, not just its
+    own line (measured against the CommonMark reference parser).
 
   It is not a sanitiser — nothing here is rendered in a browser. The prompt body in
   `format_items_for_prompt` is deliberately **not** stripped: that would change what
   the model sees on every healthy run, and belongs in its own change. Markup is
-  concentrated in a handful of sources (Reddit, Simon Willison, The Batch — about
-  half of each summary's length); the arxiv, news and lab feeds carry almost none.
+  concentrated in a handful of sources (the Reddit feeds, Simon Willison, The Batch
+  — every one of their summaries wrapped, often half its length or more); the
+  arxiv, news and lab feeds carry almost none.
 
 ## Known Architecture Deferrals
 

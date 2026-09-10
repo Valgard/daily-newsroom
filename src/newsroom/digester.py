@@ -156,7 +156,13 @@ ITEM_BODY_MAX_CHARS = 1200
 # ("gilt wenn a < b") stays text instead of being eaten as far as the next `>`.
 _HTML_TAG_RE = re.compile(r"<[a-zA-Z/!?][^>]*>")
 # A markdown sigil in first position, exposed once the tags around it are gone.
-_LEADING_SIGIL_RE = re.compile(r"^(?:([#>|+*-])|(\d+)([.)]))")
+# `~` earns its place: flattening "~~~\ncode\n~~~" gives "~~~ code ~~~", which
+# CommonMark reads as a tilde fence whose info string may itself contain tildes —
+# so it never closes and swallows every item after it, not just its own line.
+# A backtick fence cannot do that (its info string may not contain backticks), but
+# it costs nothing to escape and keeps the pair symmetric. `-` stays last: inside a
+# character class it would otherwise read as a range.
+_LEADING_SIGIL_RE = re.compile(r"^(?:([#>|+*~`-])|(\d+)([.)]))")
 
 
 def _usable_contents(raw_items) -> dict[int, dict]:  # noqa: ANN001
@@ -170,18 +176,33 @@ def _usable_contents(raw_items) -> dict[int, dict]:  # noqa: ANN001
 
     A quote counts as body text; there is no reason to discard a real headline just
     because the model put its text in the other field.
+
+    Checks types, not representability. `_render_item` calls `.strip()` on the raw
+    values, so `str()`-ing them here would let a list through and raise at render
+    time — the same crash-after-claim as the missing key above. `int()` is just as
+    treacherous on the id: it maps both `True` and `1.9` onto row 1, attaching a
+    real headline and a real link to the wrong article.
     """
+    if not isinstance(raw_items, list):
+        # `result.get("items", [])` yields None for an explicit `"items": null`; the
+        # default only covers a missing key. Iterating that raised TypeError into the
+        # broad handler, which then blamed the network for a response that arrived.
+        return {}
     usable: dict[int, dict] = {}
     for content in raw_items:
         if not isinstance(content, dict):
             continue
-        try:
-            item_id = int(content["id"])
-        except (KeyError, TypeError, ValueError):
+        item_id = content.get("id")
+        if isinstance(item_id, str) and item_id.strip().isdigit():
+            item_id = int(item_id)
+        elif not isinstance(item_id, int) or isinstance(item_id, bool):
             continue
-        if not str(content.get("headline") or "").strip():
+        headline = content.get("headline")
+        if not isinstance(headline, str) or not headline.strip():
             continue
-        if not (str(content.get("prose") or "") + str(content.get("quote") or "")).strip():
+        if any(not isinstance(content.get(key, ""), str) for key in ("prose", "quote")):
+            continue
+        if not (content.get("prose", "") + content.get("quote", "")).strip():
             continue
         usable[item_id] = content
     return usable
@@ -212,9 +233,10 @@ def _content_for(item, contents_by_id: dict[int, dict]) -> dict:  # noqa: ANN001
     headline = title, prose = raw_summary truncated to ITEM_BODY_MAX_CHARS.
 
     The truncation runs *after* stripping markup. Most feeds deliver near-plain
-    text, but a few — Reddit and The Batch above all — wrap every summary in nested
-    ``<a href=...>`` markup that accounts for about half its length; cutting first
-    would spend the budget on tags instead of on article text.
+    text, but a few — the Reddit feeds, Simon Willison, The Batch — wrap every one
+    of their summaries in nested ``<a href=...>`` markup that can take half a
+    summary's length or more; cutting first would spend the budget on tags instead
+    of on article text.
     """
     content = contents_by_id.get(item["id"])
     if content is None:
