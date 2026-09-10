@@ -112,9 +112,10 @@ schema change.
     starting "# 1 Grund" would open a heading mid-file.
 
   It is not a sanitiser — nothing here is rendered in a browser. The prompt body in
-  `format_items_for_prompt` is deliberately **not** stripped; markup is ~41% of a
-  `raw_summary` at the median, so doing it there would change what the model sees
-  on every healthy run and belongs in its own change.
+  `format_items_for_prompt` is deliberately **not** stripped: that would change what
+  the model sees on every healthy run, and belongs in its own change. Markup is
+  concentrated in a handful of sources (Reddit, Simon Willison, The Batch — about
+  half of each summary's length); the arxiv, news and lab feeds carry almost none.
 
 ## Known Architecture Deferrals
 

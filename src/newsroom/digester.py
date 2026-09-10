@@ -45,7 +45,8 @@ BANNER_UNPARSEABLE = (
     "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus-Antwort war nicht verwertbar)"
 )
 # A third cause with its own wording: the response arrived and parsed, it just carried
-# no content for any item in this file. Happened once, 0 of 125 items, no banner at all.
+# no content for any item in this file. Seen in production on 2026-07-09, when a parsed
+# response held content for 0 of 125 items and produced no banner at all.
 BANNER_NO_CONTENT = (
     "⚠️ Automatisch generiert (ohne LLM-Zusammenfassung — Opus-Antwort enthielt keine Item-Inhalte)"
 )
@@ -210,9 +211,10 @@ def _content_for(item, contents_by_id: dict[int, dict]) -> dict:  # noqa: ANN001
     A missing id (item absent from the LLM JSON) renders from the row:
     headline = title, prose = raw_summary truncated to ITEM_BODY_MAX_CHARS.
 
-    The truncation runs *after* stripping markup: 41% of a raw_summary is markup at
-    the median (measured over 400 items), so cutting first spends about half the
-    budget on ``<a href=...>`` chains instead of article text.
+    The truncation runs *after* stripping markup. Most feeds deliver near-plain
+    text, but a few — Reddit and The Batch above all — wrap every summary in nested
+    ``<a href=...>`` markup that accounts for about half its length; cutting first
+    would spend the budget on tags instead of on article text.
     """
     content = contents_by_id.get(item["id"])
     if content is None:

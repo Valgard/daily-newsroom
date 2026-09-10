@@ -11,6 +11,8 @@ from freezegun import freeze_time
 from newsroom.agent_client import AgentError, ParseError
 from newsroom.config import Source
 from newsroom.digester import (
+    BANNER_NO_CONTENT,
+    ITEM_BODY_MAX_CHARS,
     NoSlotError,
     _find_evening_section_start,
     _relative_time,
@@ -841,6 +843,35 @@ async def test_generate_digest_emits_digest_notify_dispatched_event(
 
 
 @freeze_time("2026-04-19 22:30:00")
+async def test_generate_digest_marks_but_does_not_banner_a_partial_category(
+    populated_state: State, tmp_path: Path
+) -> None:
+    """A category with *some* content gets markers, never a banner.
+
+    The classifier asks whether any item in the file has content. Asking whether all
+    of them do would banner this file too, claiming a total loss over one missing item.
+    """
+    served, *unserved = [
+        r["id"] for r in populated_state.list_items_for_digest(since_iso="2026-04-01T00:00:00")
+    ]
+    mock_agent = AsyncMock()
+    mock_agent.ask.return_value = {
+        "items": [{"id": served, "headline": "Echte Headline", "prose": "Echte Prosa."}]
+    }
+    await generate_digest(
+        state=populated_state,
+        slot="morning",
+        date=datetime(2026, 4, 19).date(),
+        output_root=tmp_path / "news",
+        agent=mock_agent,
+    )
+    body = (tmp_path / "news" / "2026" / "04" / "2026-04-19_ai.md").read_text()
+    assert "Automatisch generiert" not in body, "one served item is not a total loss"
+    assert "Echte Headline" in body
+    assert body.count("⚠️ ohne LLM-Zusammenfassung") == len(unserved)
+
+
+@freeze_time("2026-04-19 22:30:00")
 async def test_generate_digest_survives_llm_items_without_headline(
     populated_state: State, tmp_path: Path
 ) -> None:
@@ -920,7 +951,13 @@ async def test_generate_digest_banners_only_the_category_without_content(
     ai_body = (month / "2026-04-19_ai.md").read_text()
     world_body = (month / "2026-04-19_world.md").read_text()
 
-    assert "keine Item-Inhalte" in ai_body
+    # Pin the whole banner, not a fragment of it — the wording is what the reader
+    # gets, and a truncated assertion lets half of it drift away unnoticed.
+    assert BANNER_NO_CONTENT in ai_body
+    assert BANNER_NO_CONTENT == (
+        "⚠️ Automatisch generiert "
+        "(ohne LLM-Zusammenfassung — Opus-Antwort enthielt keine Item-Inhalte)"
+    )
     # Assert on the marker's own form: every banner also contains the phrase "ohne
     # LLM-Zusammenfassung" in its parenthetical, so the bare phrase proves nothing.
     assert "⚠️ ohne LLM-Zusammenfassung" not in ai_body, "the banner already says it"
@@ -1171,8 +1208,8 @@ def test_render_digest_marks_only_the_degraded_item() -> None:
 
 
 def test_render_digest_omits_markers_when_banner_present() -> None:
-    """Banner and marker are mutually exclusive: 125 markers under a banner saying the
-    same thing is exactly what the banner exists to avoid."""
+    """Banner and marker are mutually exclusive: a marker on every item, under a banner
+    already saying so, is exactly what the banner exists to avoid."""
     items = [
         _item_row(id=1, source_category="ai", title="A1"),
         _item_row(id=2, source_category="ai", title="A2"),
@@ -1281,16 +1318,43 @@ def test_render_digest_keeps_deliberately_escaped_markup_as_text() -> None:
 
 
 def test_render_digest_truncates_degraded_prose_after_stripping_html() -> None:
-    """Truncating before stripping spends the 1200-char budget on markup.
+    """The budget is spent on text, and it is still a budget.
 
-    Measured over 400 real items: 41% of raw_summary is markup, so a naive
-    truncation delivers roughly half a window of actual text.
+    Pins both halves at once. 400 units strip down to 1999 chars, so the cap has to
+    bite: exactly 240 words of "Wort " fit into ITEM_BODY_MAX_CHARS. Truncating
+    before stripping yields 16; dropping the cap yields 400.
     """
     unit = '<a href="https://example.com/very/long/path/that/is/quite/long">Wort</a> '
-    items = [_item_row(id=1, source_category="ai", title="A1", raw_summary=unit * 200)]
+    items = [_item_row(id=1, source_category="ai", title="A1", raw_summary=unit * 400)]
     out = _render_ai(items, {})
-    # Naive raw[:1200] fits ~16 words; stripping first fits ~240.
-    assert out.count("Wort") > 100, "the budget must be spent on text, not on markup"
+    assert out.count("Wort") == ITEM_BODY_MAX_CHARS // len("Wort ")
+
+
+def test_render_digest_flattens_newlines_in_degraded_prose() -> None:
+    """A feed newline must not become a line start, or the feed can forge structure.
+
+    `## ` mid-line is inert; the same text after a newline is an H2, and an H2 is
+    what separates one digest item from the next.
+    """
+    items = [
+        _item_row(
+            id=1,
+            source_category="ai",
+            title="A1",
+            raw_summary="Erste Zeile\n## Erfundene Überschrift\n- erfundener Punkt",
+        )
+    ]
+    out = _render_ai(items, {})
+    assert "Erste Zeile ## Erfundene Überschrift - erfundener Punkt" in out
+    assert not [ln for ln in out.splitlines() if ln.startswith(("## Erfundene", "- erfundener"))]
+
+
+def test_render_digest_handles_missing_raw_summary() -> None:
+    """A row can carry no summary at all; the item still has to render."""
+    items = [_item_row(id=1, source_category="ai", title="Nur ein Titel", raw_summary=None)]
+    out = _render_ai(items, {})
+    assert "## Nur ein Titel" in out
+    assert "⚠️ ohne LLM-Zusammenfassung" in out
 
 
 def test_evening_header_re_matches_new_h1_with_category() -> None:
